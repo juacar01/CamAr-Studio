@@ -11,7 +11,6 @@ import {
   Maximize2,
   X,
   Droplet,
-  Contrast,
   Eye,
   Bookmark,
 } from 'lucide-react';
@@ -82,7 +81,6 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     beautyEnabled: boolean;
     skinSmoothing: number;
     skinWhitening: number;
-    contrast: number;
     faceSlim: number;
     eyeEnlarge: number;
     eyeRound: number;
@@ -104,7 +102,6 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     beautyEnabled: true,
     skinSmoothing: 45,
     skinWhitening: 0,
-    contrast: 0,
     faceSlim: 0,
     eyeEnlarge: 0,
     eyeRound: 0,
@@ -179,7 +176,6 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
   ) => {
     const baseSmoothing = base.skinSmoothing / 100.0;
     const baseSkinWhitening = (base.skinWhitening || 0) / 100.0;
-    const baseContrast = 1.0 + (base.contrast / 100.0) * 0.5;
     const baseFaceSlim = base.faceSlim / 100.0;
     const baseEyeEnlarge = base.eyeEnlarge / 100.0;
     const baseEyeRound = base.eyeRound / 100.0;
@@ -202,7 +198,6 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
         beautyEnabled: base.beautyEnabled,
         skinSmoothing: baseSmoothing,
         skinWhitening: baseSkinWhitening,
-        contrast: baseContrast,
         faceSlim: baseFaceSlim,
         eyeEnlarge: baseEyeEnlarge,
         eyeRound: baseEyeRound,
@@ -218,10 +213,6 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
         contour: baseContour,
         irisLighting: baseIrisLighting,
         irisColor: baseIrisColor,
-        brightness: 0,
-        exposure: 0,
-        whiteBalance: 0,
-        saturation: 1.0,
       });
       return;
     }
@@ -232,14 +223,14 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     const mk = config.makeup;
 
     // 1. Capa Filtro / LUT de Rostro (Luz, tono de base, suavizado extra de preset, exposición, brillo, contraste)
-    // Se SOBREPONE a la base de apariencia sin eliminarla
+    // Se SOBREPONE a la calibración de cámara del usuario sin destruirla
     const compositeSkinSmoothing = Math.min(1.0, Math.max(0.0, baseSmoothing + (fl.skin_smoothing * fRatio * 0.45)));
-    const compositeBrightness = Number((fl.brightness * fRatio).toFixed(3));
+    const compositeBrightness = Number(((effects.brightness || 0) + fl.brightness * fRatio).toFixed(3));
     const presetContrastMult = 1.0 + (fl.contrast - 1.0) * fRatio;
-    const compositeContrast = Number(Math.max(0.5, Math.min(2.0, baseContrast * presetContrastMult)).toFixed(3));
-    const compositeSaturation = Number((1.0 + (fl.saturation - 1.0) * fRatio).toFixed(3));
-    const compositeWhiteBalance = Number((fl.white_balance * fRatio).toFixed(3));
-    const compositeExposure = Number((fl.exposure * fRatio).toFixed(3));
+    const compositeContrast = Number(Math.max(0.5, Math.min(2.0, (effects.contrast ?? 1.0) * presetContrastMult)).toFixed(3));
+    const compositeSaturation = Number(((effects.saturation ?? 1.0) * (1.0 + (fl.saturation - 1.0) * fRatio)).toFixed(3));
+    const compositeWhiteBalance = Number(((effects.whiteBalance || 0) + fl.white_balance * fRatio).toFixed(3));
+    const compositeExposure = Number(((effects.exposure || 0) + fl.exposure * fRatio).toFixed(3));
     const compositeFoundationTone = fRatio > 0.08 && fl.foundation_tone && fl.foundation_tone !== 'none'
       ? fl.foundation_tone
       : baseFoundation;
@@ -578,25 +569,6 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
                       value={baseAppearance.skinWhitening || 0}
                       onChange={(e) => updateBaseAppearance({ skinWhitening: Number(e.target.value) })}
                       className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-amber-300"
-                    />
-                  </div>
-
-                  {/* 2. Contraste */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                        <Contrast className="w-4 h-4 text-neutral-300" />
-                        <span>Contraste</span>
-                      </span>
-                      <span className="font-mono text-neutral-300">{baseAppearance.contrast}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={baseAppearance.contrast}
-                      onChange={(e) => updateBaseAppearance({ contrast: Number(e.target.value) })}
-                      className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
                     />
                   </div>
 
