@@ -1,0 +1,24 @@
+{
+  "id": "barba_studio",
+  "name": "Barba & Studio",
+  "category": "hombre",
+  "default_filter_intensity": 75,
+  "default_makeup_intensity": 45,
+  "face_light": {
+    "brightness": 0.03,
+    "contrast": 1.10,
+    "saturation": 0.94,
+    "white_balance": 0.02,
+    "exposure": 0.00,
+    "foundation_tone": "none",
+    "skin_smoothing": 0.35
+  },
+  "makeup": {
+    "lipstick": 0.0,
+    "eyeshadow": 0.0,
+    "contour": 0.15,
+    "teeth_whitening": 0.60,
+    "eye_brighten": 0.55,
+    "lip_plump": 0.0
+  }
+}

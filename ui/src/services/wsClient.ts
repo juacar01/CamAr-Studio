@@ -191,6 +191,17 @@ export class EngineSocketClient {
     }
   }
 
+  public savePresetFile(preset: any, item?: any) {
+    uiLogger.info('Presets', `Guardando preset '${preset?.name || preset?.id}' directamente en archivo JSON en disco`);
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({
+        command: 'SAVE_PRESET_FILE',
+        preset,
+        item,
+      }));
+    }
+  }
+
   public disconnect() {
     if (this.socket) {
       this.socket.close();

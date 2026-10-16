@@ -64,19 +64,6 @@ const DEFAULT_EFFECTS: EffectState = {
 };
 
 const getInitialEffects = (): EffectState => {
-  try {
-    const raw = localStorage.getItem('camar_presets');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.brightness !== undefined && Math.abs(parsed.brightness) > 1.0) {
-        parsed.brightness = 0.0;
-      }
-      if (parsed.exposure !== undefined && Math.abs(parsed.exposure) > 2.0) {
-        parsed.exposure = 0.0;
-      }
-      return { ...DEFAULT_EFFECTS, ...parsed };
-    }
-  } catch {}
   return DEFAULT_EFFECTS;
 };
 
@@ -243,10 +230,29 @@ export const App: React.FC = () => {
               filterIntensity: savedPreset.filter_intensity ?? prev.filterIntensity,
               audioVolume: savedPreset.audio_volume ?? prev.audioVolume,
               audioMuted: savedPreset.audio_muted ?? prev.audioMuted,
+              favoritePresets: savedPreset.favorite_presets || prev.favoritePresets,
+              activePresetId: savedPreset.active_preset_id || prev.activePresetId,
+              makeupIntensity: savedPreset.makeup_intensity ?? prev.makeupIntensity,
+              baseAppearance: savedPreset.base_appearance ? {
+                skinSmoothing: savedPreset.base_appearance.skin_smoothing,
+                skinWhitening: savedPreset.base_appearance.skin_whitening,
+                faceSlim: savedPreset.base_appearance.face_slim,
+                eyeEnlarge: savedPreset.base_appearance.eye_enlarge,
+                eyeRound: savedPreset.base_appearance.eye_round,
+                eyeBrighten: savedPreset.base_appearance.eye_brighten,
+                browLift: savedPreset.base_appearance.brow_lift,
+                noseSlim: savedPreset.base_appearance.nose_slim,
+                lipPlump: savedPreset.base_appearance.lip_plump,
+                foundationTone: savedPreset.base_appearance.foundation_tone,
+                foundationIntensity: savedPreset.base_appearance.foundation_intensity,
+                teethWhitening: savedPreset.base_appearance.teeth_whitening,
+                lipstick: savedPreset.base_appearance.lipstick,
+                eyeshadow: savedPreset.base_appearance.eyeshadow,
+                contour: savedPreset.base_appearance.contour,
+                irisLighting: savedPreset.base_appearance.iris_lighting,
+                irisColor: savedPreset.base_appearance.iris_color,
+              } : prev.baseAppearance,
             };
-            try {
-              localStorage.setItem('camar_presets', JSON.stringify(merged));
-            } catch {}
             return merged;
           });
         }
@@ -260,9 +266,6 @@ export const App: React.FC = () => {
 
   const handleEffectChange = (updated: EffectState) => {
     setEffects(updated);
-    try {
-      localStorage.setItem('camar_presets', JSON.stringify(updated));
-    } catch {}
     engineClient.sendConfigUpdate(updated);
   };
 
@@ -276,12 +279,8 @@ export const App: React.FC = () => {
     setIsSourceModalOpen(false);
   };
 
-  // Guardar y Conectar Fuente -> aplica parámetros, guarda preset
+  // Guardar y Conectar Fuente -> aplica parámetros y notifica al motor
   const handleSaveAndConnectSource = () => {
-    try {
-      localStorage.setItem('camar_presets', JSON.stringify(effects));
-    } catch {}
-
     engineClient.selectCamera(
       effects.selectedCameraId,
       effects.selectedWidth,
@@ -331,9 +330,6 @@ export const App: React.FC = () => {
 
   const handleReset = () => {
     setEffects(DEFAULT_EFFECTS);
-    try {
-      localStorage.removeItem('camar_presets');
-    } catch {}
     engineClient.sendConfigUpdate(DEFAULT_EFFECTS);
   };
 

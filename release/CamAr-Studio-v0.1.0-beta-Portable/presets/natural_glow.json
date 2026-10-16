@@ -1,0 +1,24 @@
+{
+  "id": "natural_glow",
+  "name": "Natural Glow",
+  "category": "vogue",
+  "default_filter_intensity": 65,
+  "default_makeup_intensity": 50,
+  "face_light": {
+    "brightness": 0.05,
+    "contrast": 1.03,
+    "saturation": 1.02,
+    "white_balance": 0.00,
+    "exposure": 0.03,
+    "foundation_tone": "tone-6",
+    "skin_smoothing": 0.45
+  },
+  "makeup": {
+    "lipstick": 0.25,
+    "eyeshadow": 0.15,
+    "contour": 0.20,
+    "teeth_whitening": 0.40,
+    "eye_brighten": 0.60,
+    "lip_plump": 0.06
+  }
+}

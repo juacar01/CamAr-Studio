@@ -70,5 +70,33 @@
       "color_range": "Full",
       "color_space": "Rec709"
     }
+  },
+  "favorite_presets": [
+    "charm",
+    "sakura_light",
+    "supermodel",
+    "natural_glow",
+    "masculino_clean"
+  ],
+  "active_preset_id": "none",
+  "makeup_intensity": 0.65,
+  "base_appearance": {
+    "skin_smoothing": 45.0,
+    "skin_whitening": 0.0,
+    "face_slim": 0.0,
+    "eye_enlarge": 0.0,
+    "eye_round": 0.0,
+    "eye_brighten": 0.0,
+    "brow_lift": 0.0,
+    "nose_slim": 0.0,
+    "lip_plump": 0.0,
+    "foundation_tone": "none",
+    "foundation_intensity": 40.0,
+    "teeth_whitening": 0.0,
+    "lipstick": 0.0,
+    "eyeshadow": 0.0,
+    "contour": 0.0,
+    "iris_lighting": 0.0,
+    "iris_color": "none"
   }
 }

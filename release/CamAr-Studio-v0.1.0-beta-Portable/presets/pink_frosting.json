@@ -1,0 +1,24 @@
+{
+  "id": "pink_frosting",
+  "name": "Pink Frosting",
+  "category": "estilo_ins",
+  "default_filter_intensity": 80,
+  "default_makeup_intensity": 75,
+  "face_light": {
+    "brightness": 0.08,
+    "contrast": 1.06,
+    "saturation": 1.08,
+    "white_balance": 0.02,
+    "exposure": 0.05,
+    "foundation_tone": "tone-5",
+    "skin_smoothing": 0.65
+  },
+  "makeup": {
+    "lipstick": 0.65,
+    "eyeshadow": 0.45,
+    "contour": 0.35,
+    "teeth_whitening": 0.50,
+    "eye_brighten": 0.75,
+    "lip_plump": 0.18
+  }
+}

@@ -16,8 +16,11 @@ import {
   Sliders,
   Check,
   Film,
+  Plus,
+  Save,
 } from 'lucide-react';
-import type { EffectState, EngineTelemetry, MakeupPresetItem, MakeupPresetConfig } from '../types';
+import type { EffectState, EngineTelemetry, MakeupPresetItem, MakeupPresetConfig, BaseAppearanceState } from '../types';
+import { engineClient } from '../services/wsClient';
 
 interface EffectsSidebarProps {
   effects: EffectState;
@@ -130,27 +133,6 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
   // Subtabs de "Mejorar"
   const [subTab, setSubTab] = useState<'apariencia' | 'maquillaje' | 'cuerpo'>('apariencia');
 
-  // Estado base de "Apariencia" persistido
-  interface BaseAppearanceState {
-    beautyEnabled: boolean;
-    skinSmoothing: number;
-    skinWhitening: number;
-    faceSlim: number;
-    eyeEnlarge: number;
-    eyeRound: number;
-    eyeBrighten: number;
-    browLift: number;
-    noseSlim: number;
-    lipPlump: number;
-    foundationTone: string;
-    foundationIntensity: number;
-    teethWhitening: number;
-    lipstick: number;
-    eyeshadow: number;
-    contour: number;
-    irisLighting: number;
-    irisColor: string;
-  }
 
   const DEFAULT_BASE_APPEARANCE: BaseAppearanceState = {
     beautyEnabled: true,
@@ -174,28 +156,38 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
   };
 
   const [baseAppearance, setBaseAppearance] = useState<BaseAppearanceState>(() => {
-    try {
-      const stored = localStorage.getItem('camar_base_appearance');
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return DEFAULT_BASE_APPEARANCE;
+    return effects.baseAppearance || DEFAULT_BASE_APPEARANCE;
   });
+
+  useEffect(() => {
+    if (effects.baseAppearance) {
+      setBaseAppearance(effects.baseAppearance);
+    }
+  }, [effects.baseAppearance]);
 
   // Estado de Presets Dinámicos de Maquillaje y Filtro Facial
   const [presetCatalog, setPresetCatalog] = useState<MakeupPresetItem[]>(DEFAULT_PRESETS);
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem('camar_favorite_presets');
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return ['charm', 'sakura_light', 'supermodel', 'natural_glow', 'masculino_clean'];
+    return effects.favoritePresets || ['charm', 'sakura_light', 'supermodel', 'natural_glow', 'masculino_clean'];
   });
+
+  useEffect(() => {
+    if (effects.favoritePresets && effects.favoritePresets.length > 0) {
+      setFavoriteIds(effects.favoritePresets);
+    }
+  }, [effects.favoritePresets]);
+
   const [makeupCategory, setMakeupCategory] = useState<string>('todos');
   const [filterCategory, setFilterCategory] = useState<string>('todos');
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('none');
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(() => effects.activePresetId || 'none');
   const [activePresetConfig, setActivePresetConfig] = useState<MakeupPresetConfig | null>(null);
-  const [filterIntensity, setFilterIntensity] = useState<number>(75);
-  const [makeupIntensity, setMakeupIntensity] = useState<number>(65);
+  const [filterIntensity, setFilterIntensity] = useState<number>(() => effects.filterIntensity ? Math.round(effects.filterIntensity * 100) : 75);
+  const [makeupIntensity, setMakeupIntensity] = useState<number>(() => effects.makeupIntensity ? Math.round(effects.makeupIntensity * 100) : 65);
+
+  // Estado del modal para guardar un nuevo preset en archivo JSON
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [newPresetCategory, setNewPresetCategory] = useState('estilo_ins');
 
   // Cargar catálogo de /presets/index.json al montar
   useEffect(() => {
@@ -216,9 +208,10 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     e?.stopPropagation();
     setFavoriteIds((prev) => {
       const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
-      try {
-        localStorage.setItem('camar_favorite_presets', JSON.stringify(next));
-      } catch {}
+      onChange({
+        ...effects,
+        favoritePresets: next,
+      });
       return next;
     });
   };
@@ -227,13 +220,14 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     base: BaseAppearanceState,
     config: MakeupPresetConfig | null,
     fInt: number,
-    mInt: number
+    mInt: number,
+    baseToSave?: BaseAppearanceState
   ) => {
     const baseSmoothing = base.skinSmoothing / 100.0;
     const baseSkinWhitening = (base.skinWhitening || 0) / 100.0;
     const baseFaceSlim = base.faceSlim / 100.0;
     const baseEyeEnlarge = base.eyeEnlarge / 100.0;
-    const baseEyeRound = base.eyeRound / 100.0;
+    const baseEyeRound = (base.eyeRound || 0) / 100.0;
     const baseEyeBrighten = (base.eyeBrighten || 0) / 100.0;
     const baseBrowLift = base.browLift / 100.0;
     const baseNoseSlim = base.noseSlim / 50.0;
@@ -244,13 +238,13 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     const baseLipstick = base.lipstick / 100.0;
     const baseEyeshadow = base.eyeshadow / 100.0;
     const baseContour = base.contour / 100.0;
-    const baseIrisLighting = base.irisLighting / 100.0;
-    const baseIrisColor = base.irisColor;
+    const baseIrisLighting = (base.irisLighting || 0) / 100.0;
+    const baseIrisColor = base.irisColor || 'none';
 
     if (!config) {
       onChange({
         ...effects,
-        beautyEnabled: base.beautyEnabled,
+        beautyEnabled: base.beautyEnabled ?? true,
         skinSmoothing: baseSmoothing,
         skinWhitening: baseSkinWhitening,
         faceSlim: baseFaceSlim,
@@ -320,16 +314,17 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
       faceSlim: baseFaceSlim,
       browLift: baseBrowLift,
       noseSlim: baseNoseSlim,
+      baseAppearance: baseToSave || base,
+      activePresetId: config?.id || 'none',
+      makeupIntensity: mInt / 100.0,
+      filterIntensity: fInt / 100.0,
     });
   };
 
   const updateBaseAppearance = (partial: Partial<BaseAppearanceState>) => {
     setBaseAppearance((prev) => {
       const updated = { ...prev, ...partial };
-      try {
-        localStorage.setItem('camar_base_appearance', JSON.stringify(updated));
-      } catch {}
-      applyComposite(updated, activePresetConfig, filterIntensity, makeupIntensity);
+      applyComposite(updated, activePresetConfig, filterIntensity, makeupIntensity, updated);
       return updated;
     });
   };
@@ -361,6 +356,54 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     console.warn(`No se pudo cargar /presets/${item.id}.json`);
   };
 
+  const handleSaveCustomPresetFile = () => {
+    const trimmed = newPresetName.trim();
+    if (!trimmed) return;
+    const newId = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const presetConfig: MakeupPresetConfig = {
+      id: newId,
+      name: trimmed,
+      category: newPresetCategory,
+      default_filter_intensity: filterIntensity,
+      default_makeup_intensity: makeupIntensity,
+      face_light: {
+        brightness: 0.05,
+        contrast: 1.05,
+        saturation: 1.0,
+        white_balance: 0.0,
+        exposure: 0.0,
+        foundation_tone: baseAppearance.foundationTone,
+        skin_smoothing: baseAppearance.skinSmoothing / 100.0,
+      },
+      makeup: {
+        lipstick: baseAppearance.lipstick / 100.0,
+        eyeshadow: baseAppearance.eyeshadow / 100.0,
+        contour: baseAppearance.contour / 100.0,
+        teeth_whitening: baseAppearance.teethWhitening / 100.0,
+        eye_brighten: (baseAppearance.eyeBrighten || 0) / 100.0,
+        lip_plump: baseAppearance.lipPlump / 100.0,
+        eye_enlarge: baseAppearance.eyeEnlarge / 100.0,
+        eye_round: (baseAppearance.eyeRound || 0) / 100.0,
+        iris_lighting: (baseAppearance.irisLighting || 0) / 100.0,
+        iris_color: baseAppearance.irisColor || 'none',
+      },
+    };
+    const presetItem: MakeupPresetItem = {
+      id: newId,
+      name: trimmed,
+      category: newPresetCategory,
+      avatar: '✨',
+      is_favorite: true,
+    };
+
+    engineClient.savePresetFile(presetConfig, presetItem);
+    setPresetCatalog((prev) => [presetItem, ...prev.filter((p) => p.id !== newId)]);
+    setSelectedPresetId(newId);
+    setActivePresetConfig(presetConfig);
+    setIsSaveModalOpen(false);
+    setNewPresetName('');
+  };
+
   // Estado de los controles de "Cuerpo"
   const [showBodyBanner, setShowBodyBanner] = useState(true);
   const [contornoCorporal, setContornoCorporal] = useState(0);
@@ -377,10 +420,7 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
         skinSmoothing: 0,
       };
       setBaseAppearance(resetBase);
-      try {
-        localStorage.setItem('camar_base_appearance', JSON.stringify(resetBase));
-      } catch {}
-      applyComposite(resetBase, activePresetConfig, filterIntensity, makeupIntensity);
+      applyComposite(resetBase, activePresetConfig, filterIntensity, makeupIntensity, resetBase);
     } else if (subTab === 'maquillaje') {
       setSelectedPresetId('none');
       setActivePresetConfig(null);
@@ -1080,8 +1120,75 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
                         }`}
                       />
                     </button>
+
+                    {/* Botón Guardar nuevo archivo JSON de preset en directorio presets/ */}
+                    <button
+                      onClick={() => setIsSaveModalOpen(true)}
+                      title="Guardar ajuste de belleza actual como archivo JSON independiente en presets/"
+                      className="p-2.5 rounded-xl border border-neutral-700 bg-[#222226] text-neutral-300 hover:text-white hover:border-[#00e5c9] hover:bg-[#00e5c9]/10 transition-all shrink-0 flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4 text-[#00e5c9]" />
+                      <span className="text-xs font-semibold text-[#00e5c9]">Guardar JSON</span>
+                    </button>
                   </div>
                 </div>
+
+                {isSaveModalOpen && (
+                  <div className="p-3.5 rounded-2xl bg-[#1e1e24] border border-[#00e5c9]/40 space-y-3 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center space-x-1.5">
+                        <Save className="w-4 h-4 text-[#00e5c9]" />
+                        <span>Guardar Preset en Directorio presets/</span>
+                      </span>
+                      <button
+                        onClick={() => setIsSaveModalOpen(false)}
+                        className="text-neutral-400 hover:text-white p-1 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-neutral-400 font-medium">Nombre del Preset:</label>
+                      <input
+                        type="text"
+                        value={newPresetName}
+                        onChange={(e) => setNewPresetName(e.target.value)}
+                        placeholder="Ej: Velvet Studio, Glam Glow..."
+                        className="w-full bg-[#141416] border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00e5c9]"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-neutral-400 font-medium">Categoría:</label>
+                      <select
+                        value={newPresetCategory}
+                        onChange={(e) => setNewPresetCategory(e.target.value)}
+                        className="w-full bg-[#141416] border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00e5c9] cursor-pointer"
+                      >
+                        <option value="estilo_ins">Estilo Ins</option>
+                        <option value="vogue">Vogue</option>
+                        <option value="hombre">Hombre</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center justify-end space-x-2 pt-1">
+                      <button
+                        onClick={() => setIsSaveModalOpen(false)}
+                        className="px-3 py-1.5 rounded-xl text-xs text-neutral-400 hover:text-white bg-neutral-800 cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleSaveCustomPresetFile}
+                        disabled={!newPresetName.trim()}
+                        className="px-4 py-1.5 rounded-xl text-xs font-bold text-black bg-[#00e5c9] hover:bg-[#00c8b0] disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
+                      >
+                        Guardar Archivo .json
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* 2. Categorías (Tabs de filtro de catálogo) */}
                 <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">

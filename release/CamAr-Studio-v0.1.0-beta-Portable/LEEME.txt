@@ -1,0 +1,32 @@
+========================================================================
+                      CAMAR STUDIO - v0.1.0 (BETA)
+========================================================================
+
+¡Bienvenido a CamAr Studio!
+Esta es la versión portable oficial lista para usar sin necesidad de
+instalación.
+
+INSTRUCCIONES DE USO:
+------------------------------------------------------------------------
+1. EJECUCIÓN DIRECTA:
+   Haz doble clic en "Iniciar_CamAr_Studio.bat" o directamente en
+   "CamAr-Studio.exe".
+
+2. CÁMARA VIRTUAL (Para OBS, Zoom, TikTok Live, Meet, Discord, etc.):
+   Si deseas utilizar la salida procesada como cámara web en otras
+   aplicaciones, abre la carpeta "driver" y ejecuta como Administrador:
+      -> install_vcam.cmd
+   (Para desinstalarla cuando quieras, ejecuta uninstall_vcam.cmd).
+
+CARACTERÍSTICAS INCLUIDAS EN ESTA VERSIÓN BETA:
+------------------------------------------------------------------------
+- Perfiles de calibración independientes por cámara física (guarda
+  brillo, contraste, nitidez y saturación específicos para cada webcam).
+- Cámara simuladora "CamAr Studio Simulator" por defecto con prueba técnica.
+- Motor de Filtros y LUTs Cinematográficos clasificados por categorías
+  (Natural, Emocional, Vívido, Onírico, Vintage) en capa superior.
+- Pipeline de Embellecimiento facial y Make-up con malla anatómica 3D
+  (MediaPipe FaceMesh 468 puntos acelerado por DirectML GPU).
+- Desacoplamiento de calibración para evitar pantallas oscuras o grises.
+
+========================================================================

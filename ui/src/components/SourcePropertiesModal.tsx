@@ -100,36 +100,61 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
         map.set(key, { width: f.width, height: f.height });
       }
     }
+    if (effects.selectedWidth && effects.selectedHeight) {
+      const activeKey = `${effects.selectedWidth}x${effects.selectedHeight}`;
+      if (!map.has(activeKey)) {
+        map.set(activeKey, { width: effects.selectedWidth, height: effects.selectedHeight });
+      }
+    }
     return Array.from(map.values());
-  }, [currentCamera]);
+  }, [currentCamera, effects.selectedWidth, effects.selectedHeight]);
 
   // FPS para la resolución activa
   const availableFps = useMemo(() => {
-    if (!currentCamera) return [];
     const list = new Set<number>();
-    for (const f of currentCamera.formats) {
-      if (f.width === effects.selectedWidth && f.height === effects.selectedHeight) {
-        list.add(f.fps);
+    if (currentCamera) {
+      for (const f of currentCamera.formats) {
+        if (f.width === effects.selectedWidth && f.height === effects.selectedHeight) {
+          list.add(f.fps);
+        }
       }
+      if (list.size === 0) {
+        for (const f of currentCamera.formats) {
+          list.add(f.fps);
+        }
+      }
+    }
+    if (list.size === 0) {
+      list.add(60);
+      list.add(30);
     }
     return Array.from(list).sort((a, b) => b - a);
   }, [currentCamera, effects.selectedWidth, effects.selectedHeight]);
 
   // Formatos para la resolución y FPS activos
   const availableFormats = useMemo(() => {
-    if (!currentCamera) return [];
     const list = new Set<string>();
-    for (const f of currentCamera.formats) {
-      if (
-        f.width === effects.selectedWidth &&
-        f.height === effects.selectedHeight &&
-        f.fps === effects.selectedFps
-      ) {
-        list.add(f.format);
+    if (currentCamera) {
+      for (const f of currentCamera.formats) {
+        if (
+          f.width === effects.selectedWidth &&
+          f.height === effects.selectedHeight &&
+          f.fps === effects.selectedFps
+        ) {
+          list.add(f.format);
+        }
+      }
+      if (list.size === 0) {
+        for (const f of currentCamera.formats) {
+          list.add(f.format);
+        }
       }
     }
+    if (list.size === 0) {
+      list.add(effects.selectedFormat || 'NV12');
+    }
     return Array.from(list);
-  }, [currentCamera, effects.selectedWidth, effects.selectedHeight, effects.selectedFps]);
+  }, [currentCamera, effects.selectedWidth, effects.selectedHeight, effects.selectedFps, effects.selectedFormat]);
 
   if (!isOpen) return null;
 
@@ -139,30 +164,37 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
     if (cam && cam.formats.length > 0) {
       const best = cam.formats[0];
       onSelectCameraConfig(cam.id, best.width, best.height, best.fps, best.format);
+    } else {
+      onSelectCameraConfig(newCamId, effects.selectedWidth || 1920, effects.selectedHeight || 1080, effects.selectedFps || 60, effects.selectedFormat || 'NV12');
     }
   };
 
   const handleResolutionChange = (resStr: string) => {
     const [w, h] = resStr.split('x').map(Number);
+    const camId = currentCamera ? currentCamera.id : (effects.selectedCameraId || 'synthetic');
     const matching = currentCamera?.formats.filter((f) => f.width === w && f.height === h) || [];
     if (matching.length > 0) {
-      const best = matching[0];
-      onSelectCameraConfig(currentCamera.id, w, h, best.fps, best.format);
+      const sameFps = matching.find((f) => f.fps === effects.selectedFps);
+      const best = sameFps || matching[0];
+      onSelectCameraConfig(camId, w, h, best.fps, best.format);
+    } else {
+      onSelectCameraConfig(camId, w, h, effects.selectedFps || 60, effects.selectedFormat || 'NV12');
     }
   };
 
   const handleFpsChange = (newFps: number) => {
+    const camId = currentCamera ? currentCamera.id : (effects.selectedCameraId || 'synthetic');
     const matching = currentCamera?.formats.filter(
       (f) => f.width === effects.selectedWidth && f.height === effects.selectedHeight && f.fps === newFps
     ) || [];
-    if (matching.length > 0) {
-      onSelectCameraConfig(currentCamera.id, effects.selectedWidth, effects.selectedHeight, newFps, matching[0].format);
-    }
+    const fmt = matching.length > 0 ? matching[0].format : (effects.selectedFormat || 'NV12');
+    onSelectCameraConfig(camId, effects.selectedWidth, effects.selectedHeight, newFps, fmt);
   };
 
   const handleFormatChange = (newFormat: string) => {
+    const camId = currentCamera ? currentCamera.id : (effects.selectedCameraId || 'synthetic');
     onSelectCameraConfig(
-      currentCamera.id,
+      camId,
       effects.selectedWidth,
       effects.selectedHeight,
       effects.selectedFps,

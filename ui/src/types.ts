@@ -98,6 +98,33 @@ export interface EffectState {
 
   // Perfiles de Hardware independientes por cámara
   cameraProfiles?: Record<string, CameraHardwareProfile>;
+
+  // Gestión de presets y favoritos nativos en JSON
+  favoritePresets?: string[];
+  activePresetId?: string;
+  makeupIntensity?: number;
+  baseAppearance?: BaseAppearanceState;
+}
+
+export interface BaseAppearanceState {
+  beautyEnabled?: boolean;
+  skinSmoothing: number;
+  skinWhitening?: number;
+  faceSlim: number;
+  eyeEnlarge: number;
+  eyeRound?: number;
+  eyeBrighten?: number;
+  browLift: number;
+  noseSlim: number;
+  lipPlump: number;
+  foundationTone: string;
+  foundationIntensity?: number;
+  teethWhitening: number;
+  lipstick: number;
+  eyeshadow: number;
+  contour: number;
+  irisLighting?: number;
+  irisColor?: string;
 }
 
 export interface CameraHardwareProfile {
