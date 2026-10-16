@@ -1,0 +1,28 @@
+{
+  "id": "supermodel",
+  "name": "Supermodel",
+  "category": "vogue",
+  "default_filter_intensity": 70,
+  "default_makeup_intensity": 60,
+  "face_light": {
+    "brightness": 0.04,
+    "contrast": 1.10,
+    "saturation": 0.95,
+    "white_balance": 0.00,
+    "exposure": 0.02,
+    "foundation_tone": "tone-6",
+    "skin_smoothing": 0.50
+  },
+  "makeup": {
+    "lipstick": 0.40,
+    "eyeshadow": 0.50,
+    "contour": 0.55,
+    "teeth_whitening": 0.50,
+    "eye_brighten": 0.60,
+    "lip_plump": 0.08,
+    "eye_enlarge": 0.20,
+    "eye_round": 0.25,
+    "iris_lighting": 0.45,
+    "iris_color": "none"
+  }
+}

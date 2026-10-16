@@ -13,6 +13,9 @@ import {
   Droplet,
   Eye,
   Bookmark,
+  Sliders,
+  Check,
+  Film,
 } from 'lucide-react';
 import type { EffectState, EngineTelemetry, MakeupPresetItem, MakeupPresetConfig } from '../types';
 
@@ -62,6 +65,57 @@ const DEFAULT_PRESETS: MakeupPresetItem[] = [
   { id: 'masculino_clean', name: 'Masculino Clean', category: 'hombre', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80', is_favorite: true },
   { id: 'barba_studio', name: 'Barba & Studio', category: 'hombre', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80', is_favorite: false },
   { id: 'editorial_man', name: 'Editorial Man', category: 'hombre', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80', is_favorite: false },
+];
+
+export interface FilterLutItem {
+  id: string;
+  name: string;
+  category: 'natural' | 'emocional' | 'vivido' | 'onirico' | 'vintage';
+  desc: string;
+  gradient: string;
+}
+
+export const FILTER_LUTS: FilterLutItem[] = [
+  // 1. Natural (Tonos limpios, porcelana, calidez de luz diurna)
+  { id: 'nat_porcelain', name: 'Porcelana', category: 'natural', desc: 'Piel blanca translúcida, sombras limpias sin tinte amarillo', gradient: 'linear-gradient(135deg, #fff0f5 0%, #e0f2fe 50%, #ffffff 100%)' },
+  { id: 'nat_soft_day', name: 'Día Suave', category: 'natural', desc: 'Luz diurna suave y calidez orgánica para streaming diario', gradient: 'linear-gradient(135deg, #fff8e1 0%, #ffe0b2 50%, #e0f2f1 100%)' },
+  { id: 'nat_peach_glow', name: 'Melocotón', category: 'natural', desc: 'Resplandor saludable con tonos cálidos y mejillas rosadas', gradient: 'linear-gradient(135deg, #ffe0b2 0%, #ffccbc 50%, #fbe9e7 100%)' },
+  { id: 'nat_japanese', name: 'Japonesa', category: 'natural', desc: 'Película aireada de Tokio, negros suaves y tonos pastel', gradient: 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 50%, #e1f5fe 100%)' },
+  { id: 'nat_ivory_clean', name: 'Marfil', category: 'natural', desc: 'Claridad cristalina, contraste pulido y balance blanco neutro', gradient: 'linear-gradient(135deg, #fafafa 0%, #e0e0e0 50%, #ffffff 100%)' },
+  { id: 'nat_morning_dew', name: 'Rocío Fresco', category: 'natural', desc: 'Sombras cian frescas y altas luces doradas de amanecer', gradient: 'linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 50%, #fff9c4 100%)' },
+
+  // 2. Emocional (Atmósferas dramáticas, atardecer, luz de vela)
+  { id: 'emo_golden_sunset', name: 'Atardecer Dorado', category: 'emocional', desc: 'Hora dorada cálida, resplandor ámbar cinematográfico', gradient: 'linear-gradient(135deg, #ff6f00 0%, #ffb300 50%, #ffe082 100%)' },
+  { id: 'emo_teal_orange', name: 'Teal & Orange', category: 'emocional', desc: 'Estética Hollywood: sombras turquesa y pieles naranja cálido', gradient: 'linear-gradient(135deg, #00838f 0%, #ff8f00 100%)' },
+  { id: 'emo_melancholy', name: 'Melancolía', category: 'emocional', desc: 'Tonos crepusculares violeta y lavanda suavemente desaturados', gradient: 'linear-gradient(135deg, #512da8 0%, #7e57c2 50%, #b39ddb 100%)' },
+  { id: 'emo_intimate_dusk', name: 'Crepúsculo Íntimo', category: 'emocional', desc: 'Sombras envolventes y tonalidad vino tinto aterciopelado', gradient: 'linear-gradient(135deg, #4a148c 0%, #880e4f 50%, #ad1457 100%)' },
+  { id: 'emo_candlelight', name: 'Luz de Vela', category: 'emocional', desc: 'Incandescencia pura ámbar y atmósfera cálida de fogata', gradient: 'linear-gradient(135deg, #e65100 0%, #f57c00 50%, #ffb74d 100%)' },
+  { id: 'emo_midnight', name: 'Azul Medianoche', category: 'emocional', desc: 'Sombras azul zafiro profundo con piel contrastada', gradient: 'linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%)' },
+
+  // 3. Vívido (Pop, energía, revista editorial y moda)
+  { id: 'viv_pop_glam', name: 'Pop Glam', category: 'vivido', desc: 'Alta saturación y definición con impacto visual en vivo', gradient: 'linear-gradient(135deg, #d81b60 0%, #8e24aa 50%, #3949ab 100%)' },
+  { id: 'viv_summer', name: 'Verano Dorado', category: 'vivido', desc: 'Cielos luminosos, tonos marinos y energía solar brillante', gradient: 'linear-gradient(135deg, #0288d1 0%, #00acc1 50%, #fdd835 100%)' },
+  { id: 'viv_editorial', name: 'Moda Editorial', category: 'vivido', desc: 'Contraste de portada de revista de alta costura', gradient: 'linear-gradient(135deg, #212121 0%, #c2185b 50%, #f48fb1 100%)' },
+  { id: 'viv_candy', name: 'Dulce Candy', category: 'vivido', desc: 'Magentas dulces vibrantes y tonos dorados acaramelados', gradient: 'linear-gradient(135deg, #ff4081 0%, #f48fb1 50%, #ffe082 100%)' },
+  { id: 'viv_tropical', name: 'Tropical', category: 'vivido', desc: 'Verdes exuberantes y vitalidad luminosa caribeña', gradient: 'linear-gradient(135deg, #00897b 0%, #43a047 50%, #ffb300 100%)' },
+  { id: 'viv_neon', name: 'Neón Cyber', category: 'vivido', desc: 'Contraste eléctrico ultra vívido para transmisiones nocturnas', gradient: 'linear-gradient(135deg, #6200ea 0%, #00e5ff 100%)' },
+
+  // 4. Onírico (Fairy tale, cuarzo, halos y resplandor)
+  { id: 'oni_fairy_tale', name: 'Cuento de Hadas', category: 'onirico', desc: 'Difusión de cuento con destellos esmeralda y oro suave', gradient: 'linear-gradient(135deg, #a7ffeb 0%, #b9f6ca 50%, #fff59d 100%)' },
+  { id: 'oni_champagne', name: 'Champagne', category: 'onirico', desc: 'Velo cremoso dorado, elegancia sutil y piel aterciopelada', gradient: 'linear-gradient(135deg, #fff8e1 0%, #ffe082 50%, #ffecb3 100%)' },
+  { id: 'oni_rose_dream', name: 'Cuarzo Rosa', category: 'onirico', desc: 'Aura rosada pastel romántica y etérea', gradient: 'linear-gradient(135deg, #f8bbd0 0%, #f48fb1 50%, #fce4ec 100%)' },
+  { id: 'oni_angelic', name: 'Luz Angelical', category: 'onirico', desc: 'Blancos celestiales elevados con halo luminoso suave', gradient: 'linear-gradient(135deg, #ffffff 0%, #e1f5fe 50%, #ede7f6 100%)' },
+  { id: 'oni_mist', name: 'Bruma Mística', category: 'onirico', desc: 'Negros mate desvanecidos con atmósfera de ensueño', gradient: 'linear-gradient(135deg, #cfd8dc 0%, #b0bec5 50%, #eceff1 100%)' },
+  { id: 'oni_magic_glow', name: 'Brillo Mágico', category: 'onirico', desc: 'Resplandor dorado en medios tonos que ilumina el rostro', gradient: 'linear-gradient(135deg, #ffd54f 0%, #ffca28 50%, #ffe082 100%)' },
+
+  // 5. Vintage (Película analógica clásica de 35mm, 90s, Polaroid)
+  { id: 'vin_kodak_portra', name: 'Kodak Portra', category: 'vintage', desc: 'Tono piel icónico de película de 35mm con negros suaves', gradient: 'linear-gradient(135deg, #d7ccc8 0%, #ffcc80 50%, #b0bec5 100%)' },
+  { id: 'vin_fuji_velvia', name: 'Fuji Velvia', category: 'vintage', desc: 'Contraste rico analógico con saturación profunda y verdes esmeralda', gradient: 'linear-gradient(135deg, #2e7d32 0%, #c2185b 50%, #0277bd 100%)' },
+  { id: 'vin_retro_90s', name: 'Retro 90s', category: 'vintage', desc: 'Nostalgia de videocámara VHS analógica con calidez suave', gradient: 'linear-gradient(135deg, #ffcc80 0%, #ffe082 50%, #a7ffeb 100%)' },
+  { id: 'vin_noir_classic', name: 'Noir B&W', category: 'vintage', desc: 'Monocromo clásico argéntico de alto contraste dramático', gradient: 'linear-gradient(135deg, #111111 0%, #666666 50%, #eeeeee 100%)' },
+  { id: 'vin_sepia_antique', name: 'Sepia Elegante', category: 'vintage', desc: 'Tonalidad ámbar chocolate del siglo XIX', gradient: 'linear-gradient(135deg, #5d4037 0%, #8d6e63 50%, #d7ccc8 100%)' },
+  { id: 'vin_polaroid', name: 'Polaroid 600', category: 'vintage', desc: 'Instantánea vintage con negros desvanecidos y tinte cálido', gradient: 'linear-gradient(135deg, #fff3e0 0%, #ffb74d 50%, #bcaaa4 100%)' },
+  { id: 'vin_cyberpunk', name: 'Cyber 80s', category: 'vintage', desc: 'Crominancia ochentera de sombras turquesa y luces fucsia', gradient: 'linear-gradient(135deg, #00e5ff 0%, #d500f9 100%)' },
 ];
 
 export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
@@ -137,6 +191,7 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     return ['charm', 'sakura_light', 'supermodel', 'natural_glow', 'masculino_clean'];
   });
   const [makeupCategory, setMakeupCategory] = useState<string>('todos');
+  const [filterCategory, setFilterCategory] = useState<string>('todos');
   const [selectedPresetId, setSelectedPresetId] = useState<string>('none');
   const [activePresetConfig, setActivePresetConfig] = useState<MakeupPresetConfig | null>(null);
   const [filterIntensity, setFilterIntensity] = useState<number>(75);
@@ -222,15 +277,9 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     const fl = config.face_light;
     const mk = config.makeup;
 
-    // 1. Capa Filtro / LUT de Rostro (Luz, tono de base, suavizado extra de preset, exposición, brillo, contraste)
-    // Se SOBREPONE a la calibración de cámara del usuario sin destruirla
+    // 1. Capa Filtro / Suavizado de Rostro
+    // Los parámetros de calibración de cámara (contraste, brillo, exposición, etc.) NO se tocan
     const compositeSkinSmoothing = Math.min(1.0, Math.max(0.0, baseSmoothing + (fl.skin_smoothing * fRatio * 0.45)));
-    const compositeBrightness = Number(((effects.brightness || 0) + fl.brightness * fRatio).toFixed(3));
-    const presetContrastMult = 1.0 + (fl.contrast - 1.0) * fRatio;
-    const compositeContrast = Number(Math.max(0.5, Math.min(2.0, (effects.contrast ?? 1.0) * presetContrastMult)).toFixed(3));
-    const compositeSaturation = Number(((effects.saturation ?? 1.0) * (1.0 + (fl.saturation - 1.0) * fRatio)).toFixed(3));
-    const compositeWhiteBalance = Number(((effects.whiteBalance || 0) + fl.white_balance * fRatio).toFixed(3));
-    const compositeExposure = Number(((effects.exposure || 0) + fl.exposure * fRatio).toFixed(3));
     const compositeFoundationTone = fRatio > 0.08 && fl.foundation_tone && fl.foundation_tone !== 'none'
       ? fl.foundation_tone
       : baseFoundation;
@@ -256,11 +305,6 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
       beautyEnabled: true,
       skinSmoothing: Number(compositeSkinSmoothing.toFixed(3)),
       skinWhitening: baseSkinWhitening,
-      contrast: compositeContrast,
-      saturation: compositeSaturation,
-      whiteBalance: compositeWhiteBalance,
-      exposure: compositeExposure,
-      brightness: compositeBrightness,
       foundationTone: compositeFoundationTone,
       foundationIntensity: baseFoundationIntensity,
       lipstick: compositeLipstick,
@@ -1419,92 +1463,180 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
 
       {/* TAB: FILTROS */}
       {mainTab === 'filtros' && (
-        <div className="flex-1 flex flex-col overflow-y-auto p-5 space-y-5">
+        <div className="flex-1 flex flex-col overflow-y-auto p-5 space-y-4">
+          {/* Cabecera */}
           <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
-            <span className="font-semibold text-neutral-200">Color y Definición</span>
+            <div className="flex items-center space-x-2">
+              <Film className="w-4 h-4 text-[#00e5c9]" />
+              <span className="font-semibold text-neutral-200">Filtros Cinematográficos</span>
+            </div>
             <button
-              onClick={() => onChange({
-                ...effects,
-                contrast: 1.0,
-                saturation: 1.0,
-                sharpness: 0.35,
-                hue: 0.0,
-              })}
-              className="text-neutral-400 hover:text-white flex items-center space-x-1 text-[11px]"
+              onClick={() =>
+                onChange({
+                  ...effects,
+                  filterLut: 'none',
+                  filterIntensity: 0.80,
+                })
+              }
+              className="text-neutral-400 hover:text-white flex items-center space-x-1 text-[11px] transition-colors"
             >
               <RotateCcw className="w-3 h-3" />
               <span>Restablecer</span>
             </button>
           </div>
 
-          <div className="space-y-4">
-            {/* Contraste */}
-            <div className="space-y-1.5">
+          {/* Slider de Intensidad del Filtro (visible siempre que haya un filtro activo) */}
+          {effects.filterLut && effects.filterLut !== 'none' && (
+            <div className="bg-[#18181b]/90 border border-neutral-800 rounded-xl p-3 space-y-2 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-neutral-200 font-medium">Contraste Dinámico</span>
-                <span className="font-mono text-neutral-300">{(effects.contrast || 1.0).toFixed(2)}</span>
+                <span className="flex items-center space-x-1.5 text-xs text-neutral-300 font-medium">
+                  <Sliders className="w-3.5 h-3.5 text-[#00e5c9]" />
+                  <span>
+                    Intensidad:{' '}
+                    <span className="text-[#00e5c9]">
+                      {FILTER_LUTS.find((f) => f.id === effects.filterLut)?.name || effects.filterLut}
+                    </span>
+                  </span>
+                </span>
+                <span className="font-mono text-xs text-neutral-200">
+                  {Math.round((effects.filterIntensity ?? 0.80) * 100)}%
+                </span>
               </div>
-              <input
-                type="range"
-                min="0.5"
-                max="1.8"
-                step="0.02"
-                value={effects.contrast ?? 1.0}
-                onChange={(e) => onChange({ ...effects, contrast: parseFloat(e.target.value) })}
-                className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-              />
+              <div className="flex items-center space-x-3">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round((effects.filterIntensity ?? 0.80) * 100)}
+                  onChange={(e) =>
+                    onChange({
+                      ...effects,
+                      filterIntensity: parseFloat(e.target.value) / 100.0,
+                    })
+                  }
+                  className="w-full h-1.5 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-[#00e5c9]"
+                />
+              </div>
             </div>
+          )}
 
-            {/* Saturación */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-200 font-medium">Saturación Rec. 709</span>
-                <span className="font-mono text-neutral-300">{(effects.saturation || 1.0).toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="0.0"
-                max="2.0"
-                step="0.02"
-                value={effects.saturation ?? 1.0}
-                onChange={(e) => onChange({ ...effects, saturation: parseFloat(e.target.value) })}
-                className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-              />
-            </div>
+          {/* Barra de Categorías Estilo Bigo / TikTok */}
+          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+            {[
+              { id: 'todos', label: 'Todos' },
+              { id: 'natural', label: 'Natural' },
+              { id: 'emocional', label: 'Emocional' },
+              { id: 'vivido', label: 'Vívido' },
+              { id: 'onirico', label: 'Onírico' },
+              { id: 'vintage', label: 'Vintage' },
+            ].map((cat) => {
+              const isActive = filterCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setFilterCategory(cat.id)}
+                  className={`px-3 py-1 rounded-full whitespace-nowrap transition-all font-medium ${
+                    isActive
+                      ? 'bg-[#00e5c9] text-black shadow-md'
+                      : 'bg-[#1b1b1e] text-neutral-400 hover:text-white hover:bg-[#25252a]'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
 
-            {/* Nitidez */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-200 font-medium">Nitidez y Micro-Contraste</span>
-                <span className="font-mono text-neutral-300">{(effects.sharpness || 0.0).toFixed(2)}</span>
+          {/* Cuadrícula de Filtros / LUTs */}
+          <div className="grid grid-cols-4 gap-2.5 pt-1 max-h-[420px] overflow-y-auto pr-1">
+            {/* Opción: Ninguno */}
+            <button
+              onClick={() =>
+                onChange({
+                  ...effects,
+                  filterLut: 'none',
+                })
+              }
+              className="flex flex-col items-center space-y-1.5 group"
+              title="Sin filtro de color"
+            >
+              <div
+                className={`w-full aspect-square rounded-2xl bg-[#1b1b1e] border flex items-center justify-center transition-all ${
+                  !effects.filterLut || effects.filterLut === 'none'
+                    ? 'border-[#00e5c9] ring-2 ring-[#00e5c9]/40 text-[#00e5c9] shadow-md'
+                    : 'border-neutral-800 text-neutral-500 group-hover:text-neutral-300 group-hover:border-neutral-700'
+                }`}
+              >
+                <span className="text-xl">⊘</span>
               </div>
-              <input
-                type="range"
-                min="0.0"
-                max="1.0"
-                step="0.02"
-                value={effects.sharpness ?? 0.35}
-                onChange={(e) => onChange({ ...effects, sharpness: parseFloat(e.target.value) })}
-                className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-              />
-            </div>
+              <span
+                className={`text-[11px] truncate w-full text-center ${
+                  !effects.filterLut || effects.filterLut === 'none'
+                    ? 'text-[#00e5c9] font-medium'
+                    : 'text-neutral-400'
+                }`}
+              >
+                Sin Filtro
+              </span>
+            </button>
 
-            {/* Matiz */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-200 font-medium">Matiz (Hue Shift)</span>
-                <span className="font-mono text-neutral-300">{(effects.hue || 0.0).toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="-1.0"
-                max="1.0"
-                step="0.05"
-                value={effects.hue ?? 0.0}
-                onChange={(e) => onChange({ ...effects, hue: parseFloat(e.target.value) })}
-                className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-              />
-            </div>
+            {/* Lista de Filtros de la Categoría Seleccionada */}
+            {FILTER_LUTS.filter((lut) => filterCategory === 'todos' || lut.category === filterCategory).map(
+              (lut) => {
+                const isSelected = effects.filterLut === lut.id;
+                return (
+                  <button
+                    key={lut.id}
+                    onClick={() =>
+                      onChange({
+                        ...effects,
+                        filterLut: isSelected ? 'none' : lut.id,
+                        filterIntensity: effects.filterIntensity ?? 0.80,
+                      })
+                    }
+                    className="flex flex-col items-center space-y-1.5 group relative"
+                    title={`${lut.name} - ${lut.desc}`}
+                  >
+                    <div
+                      style={{ background: lut.gradient }}
+                      className={`w-full aspect-square rounded-2xl border relative overflow-hidden transition-all duration-150 ${
+                        isSelected
+                          ? 'border-white ring-2 ring-[#00e5c9] ring-offset-2 ring-offset-[#121214] scale-105 shadow-[0_0_14px_rgba(0,229,201,0.4)]'
+                          : 'border-neutral-800 opacity-90 group-hover:opacity-100 group-hover:scale-102 group-hover:border-neutral-600'
+                      }`}
+                    >
+                      {/* Brillo sutil y viñeta interna */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-white/20 pointer-events-none" />
+
+                      {/* Badge con Check si está seleccionado */}
+                      {isSelected && (
+                        <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#00e5c9] text-black flex items-center justify-center shadow-md">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </div>
+                      )}
+                    </div>
+
+                    <span
+                      className={`text-[11px] truncate w-full text-center transition-colors ${
+                        isSelected
+                          ? 'text-[#00e5c9] font-medium'
+                          : 'text-neutral-300 group-hover:text-white'
+                      }`}
+                    >
+                      {lut.name}
+                    </span>
+                  </button>
+                );
+              }
+            )}
+          </div>
+
+          {/* Información técnica y separación de capas */}
+          <div className="pt-2 text-[11px] text-neutral-500 border-t border-neutral-800/60 leading-relaxed">
+            <p>
+              ✨ Gradación de color master post-procesado. Aplica como capa superior final sin afectar el contraste de la cámara ni los filtros de belleza.
+            </p>
           </div>
         </div>
       )}

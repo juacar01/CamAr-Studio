@@ -1,0 +1,24 @@
+{
+  "id": "juice",
+  "name": "juice",
+  "category": "estilo_ins",
+  "default_filter_intensity": 75,
+  "default_makeup_intensity": 65,
+  "face_light": {
+    "brightness": 0.06,
+    "contrast": 1.05,
+    "saturation": 1.12,
+    "white_balance": 0.05,
+    "exposure": 0.04,
+    "foundation_tone": "tone-4",
+    "skin_smoothing": 0.58
+  },
+  "makeup": {
+    "lipstick": 0.60,
+    "eyeshadow": 0.38,
+    "contour": 0.30,
+    "teeth_whitening": 0.45,
+    "eye_brighten": 0.70,
+    "lip_plump": 0.15
+  }
+}

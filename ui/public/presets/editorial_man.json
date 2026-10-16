@@ -1,0 +1,24 @@
+{
+  "id": "editorial_man",
+  "name": "Editorial Man",
+  "category": "hombre",
+  "default_filter_intensity": 70,
+  "default_makeup_intensity": 40,
+  "face_light": {
+    "brightness": 0.02,
+    "contrast": 1.12,
+    "saturation": 0.90,
+    "white_balance": -0.04,
+    "exposure": 0.00,
+    "foundation_tone": "none",
+    "skin_smoothing": 0.38
+  },
+  "makeup": {
+    "lipstick": 0.0,
+    "eyeshadow": 0.0,
+    "contour": 0.30,
+    "teeth_whitening": 0.55,
+    "eye_brighten": 0.60,
+    "lip_plump": 0.0
+  }
+}

@@ -1,0 +1,45 @@
+# Rust
+engine-rs/target/
+**/target/
+Cargo.lock
+
+# Nested repositories and vendor deps
+engine-rs/
+deps/
+
+# Node / Web UI
+ui/node_modules/
+ui/dist/
+ui/dist-ssr/
+*.local
+
+# Binaries, models & large weights
+*.dll
+*.exe
+*.pdb
+models/
+
+# Logs and temp files
+*.log
+logs/
+app_lifecycle.log
+camar_ai.log
+*.tmp
+test_rust_output.png
+
+# Build artifacts and C++ builds
+build/
+ai_module/build/
+ui-winui/bin/
+ui-winui/obj/
+
+# Distribution and installers
+dist/
+dist-installer/
+_backups/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user

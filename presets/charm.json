@@ -1,0 +1,28 @@
+{
+  "id": "charm",
+  "name": "Charm",
+  "category": "estilo_ins",
+  "default_filter_intensity": 75,
+  "default_makeup_intensity": 65,
+  "face_light": {
+    "brightness": 0.06,
+    "contrast": 1.05,
+    "saturation": 0.96,
+    "white_balance": -0.06,
+    "exposure": 0.04,
+    "foundation_tone": "tone-7",
+    "skin_smoothing": 0.60
+  },
+  "makeup": {
+    "lipstick": 0.45,
+    "eyeshadow": 0.30,
+    "contour": 0.25,
+    "teeth_whitening": 0.45,
+    "eye_brighten": 0.70,
+    "lip_plump": 0.10,
+    "eye_enlarge": 0.20,
+    "eye_round": 0.25,
+    "iris_lighting": 0.45,
+    "iris_color": "none"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "masculino_clean",
+  "name": "Masculino Clean",
+  "category": "hombre",
+  "default_filter_intensity": 70,
+  "default_makeup_intensity": 40,
+  "face_light": {
+    "brightness": 0.04,
+    "contrast": 1.06,
+    "saturation": 0.98,
+    "white_balance": 0.00,
+    "exposure": 0.02,
+    "foundation_tone": "none",
+    "skin_smoothing": 0.40
+  },
+  "makeup": {
+    "lipstick": 0.0,
+    "eyeshadow": 0.0,
+    "contour": 0.0,
+    "teeth_whitening": 0.50,
+    "eye_brighten": 0.50,
+    "lip_plump": 0.0
+  }
+}

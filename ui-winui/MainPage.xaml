@@ -1,0 +1,639 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="CamArStudio_WinUI.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:CamArStudio_WinUI"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="#101115">
+
+    <Page.Resources>
+        <!-- Dark Fluent Accent Resources -->
+        <SolidColorBrush x:Key="SidebarBackground" Color="#15161D" />
+        <SolidColorBrush x:Key="CardBackground" Color="#1C1E26" />
+        <SolidColorBrush x:Key="BorderColor" Color="#282B37" />
+        <SolidColorBrush x:Key="AccentPink" Color="#EC4899" />
+        <SolidColorBrush x:Key="AccentCyan" Color="#06B6D4" />
+        <SolidColorBrush x:Key="AccentBlue" Color="#0078D4" />
+        <SolidColorBrush x:Key="SuccessGreen" Color="#107C41" />
+        <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#9EA2B1" />
+
+        <Style x:Key="CustomSliderStyle" TargetType="Slider">
+            <Setter Property="Margin" Value="0,2,0,10" />
+            <Setter Property="IsThumbToolTipEnabled" Value="True" />
+        </Style>
+
+        <Style x:Key="NavTabButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+
+        <Style x:Key="FilterCardButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1C1E26" />
+            <Setter Property="BorderBrush" Value="#2B2F3E" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- 1. Studio Top Header -->
+            <RowDefinition Height="Auto" />
+            <!-- 2. Main Workspace (Left Viewport + Right Sidebar) -->
+            <RowDefinition Height="*" />
+            <!-- 3. Telemetry Status Bar -->
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ================================================================= -->
+        <!-- 1. TOP STUDIO TOOLBAR                                             -->
+        <!-- ================================================================= -->
+        <Border Grid.Row="0" Background="#14151B" BorderBrush="#242733" BorderThickness="0,0,0,1" Padding="16,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Brand & Logo -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <Border CornerRadius="10" Width="38" Height="38">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#EC4899" Offset="0.0" />
+                                <GradientStop Color="#F43F5E" Offset="0.5" />
+                                <GradientStop Color="#06B6D4" Offset="1.0" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <Border Background="#101115" CornerRadius="8" Margin="2">
+                            <FontIcon Glyph="&#xE706;" Foreground="#F472B6" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="CamAr Studio" FontSize="15" FontWeight="Bold" Foreground="White" />
+                            <Border Background="#2B1B10" BorderBrush="#7C3B12" BorderThickness="1" CornerRadius="4" Padding="6,1">
+                                <TextBlock Text="RUST 60 FPS" FontSize="9" FontWeight="Bold" Foreground="#FB923C" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="Live Video Engine &amp; Virtual Camera" FontSize="11" Foreground="#8A8E9E" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Center Source Selector Card & Quick Actions -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Central Source Selector Card Button -->
+                    <Button x:Name="SourcePropertiesButton" Click="SourcePropertiesButton_Click" Background="#1A1C24" BorderBrush="#2F3343" BorderThickness="1" CornerRadius="10" Padding="12,6">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Border Background="#331A2A" CornerRadius="8" Width="30" Height="30">
+                                <FontIcon Glyph="&#xE960;" Foreground="#F472B6" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock x:Name="SelectedCameraNameText" Text="CamAr Studio Simulator" FontSize="12" FontWeight="SemiBold" Foreground="White" MaxWidth="220" TextTrimming="CharacterEllipsis" />
+                                    <Border Background="#121319" BorderBrush="#2F3343" BorderThickness="1" CornerRadius="4" Padding="5,1">
+                                        <TextBlock x:Name="SelectedFormatBadgeText" Text="1920×1080 @ 60 FPS • NV12" FontSize="10" Foreground="#D1D5DB" />
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock Text="Clic para configurar fuente, resolución y audio" FontSize="10" Foreground="#7D8294" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Mini VU Audio Bar & Mute -->
+                    <Border Background="#1A1C24" BorderBrush="#2F3343" BorderThickness="1" CornerRadius="10" Padding="10,6">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button x:Name="MuteAudioButton" Click="MuteAudioButton_Click" Background="Transparent" BorderThickness="0" Padding="4" CornerRadius="4" ToolTipService.ToolTip="Silenciar / Activar Micrófono">
+                                <FontIcon x:Name="MuteAudioIcon" Glyph="&#xE720;" FontSize="13" Foreground="#9CA3AF" />
+                            </Button>
+                            <ProgressBar x:Name="AudioVuMeter" Width="70" Height="6" Minimum="-60" Maximum="0" Value="-45" Foreground="#10B981" Background="#292D3B" />
+                            <TextBlock x:Name="AudioDbText" Text="-45 dB" FontSize="10" Foreground="#8A8E9E" Width="40" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Auto-Tune IA One-Click -->
+                    <Button x:Name="AutoTuneButton" Click="AutoTuneButton_Click" Background="#1E2333" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="8" Padding="12,7" ToolTipService.ToolTip="Calibrar color, luz y balance automáticamente con IA">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE706;" FontSize="13" Foreground="#38BDF8" />
+                            <TextBlock Text="Auto-Tune IA" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Pause Preview -->
+                    <ToggleButton x:Name="PausePreviewToggle" Click="PausePreviewToggle_Click" Background="#1A1C24" BorderBrush="#2F3343" CornerRadius="8" Padding="8,7" ToolTipService.ToolTip="Pausar / Reanudar Vista Previa">
+                        <FontIcon Glyph="&#xE769;" FontSize="13" Foreground="#9CA3AF" />
+                    </ToggleButton>
+                </StackPanel>
+
+                <!-- Right Actions: Connection Badge & Virtual Cam Button -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <!-- Engine Status Indicator -->
+                    <Border x:Name="EngineStatusBadge" Background="#142C1D" BorderBrush="#1C4B2B" BorderThickness="1" CornerRadius="12" Padding="10,5">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="#10B981" />
+                            <TextBlock x:Name="StatusText" Text="60.0 FPS" FontSize="11" FontWeight="SemiBold" Foreground="#34D399" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Virtual Camera Toggle -->
+                    <ToggleButton x:Name="VirtualCamToggle" Click="VirtualCamToggle_Click" Background="#0369A1" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="8" Padding="14,7">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE714;" FontSize="14" Foreground="White" />
+                            <TextBlock x:Name="VirtualCamText" Text="Iniciar Cámara Virtual" FontSize="12" FontWeight="Bold" Foreground="White" />
+                        </StackPanel>
+                    </ToggleButton>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ================================================================= -->
+        <!-- 2. MAIN WORKSPACE (VIEWPORT & RIGHT TABBED SIDEBAR)               -->
+        <!-- ================================================================= -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <!-- Video Viewport -->
+                <ColumnDefinition Width="*" />
+                <!-- Sidebar Controls -->
+                <ColumnDefinition Width="440" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Video Viewport -->
+            <Border Grid.Column="0" Background="#0A0B0E" Margin="14" CornerRadius="12" BorderBrush="#1F222C" BorderThickness="1">
+                <Grid>
+                    <!-- Video Canvas Image -->
+                    <Image x:Name="VideoPreviewImage" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                    <!-- No Signal / Connecting Overlay -->
+                    <StackPanel x:Name="NoSignalOverlay" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" Visibility="Collapsed">
+                        <ProgressRing IsActive="True" Width="44" Height="44" Foreground="#EC4899" />
+                        <TextBlock Text="Conectando con el Motor Nativo CamAr Studio..." FontSize="13" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Top-Left Live HUD Badge -->
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14" Background="#D90E1015" CornerRadius="8" Padding="12,6" BorderBrush="#282C3A" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock x:Name="HudResolutionText" Text="1920×1080" FontSize="11" FontWeight="Bold" Foreground="White" />
+                            <TextBlock Text="•" FontSize="11" Foreground="#4B5162" />
+                            <TextBlock x:Name="HudFpsText" Text="60.0 FPS" FontSize="11" FontWeight="Bold" Foreground="#34D399" />
+                            <TextBlock Text="•" FontSize="11" Foreground="#4B5162" />
+                            <TextBlock x:Name="HudLatencyText" Text="2.1 ms" FontSize="11" Foreground="#38BDF8" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Top-Right Face Tracking HUD Badge -->
+                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="14" Background="#D90E1015" CornerRadius="8" Padding="12,6" BorderBrush="#282C3A" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Ellipse Width="7" Height="7" Fill="#10B981" />
+                            <TextBlock x:Name="HudFaceTrackText" Text="FaceMesh 3D (DirectML)" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Right Controls Sidebar -->
+            <Border Grid.Column="1" Background="#14151B" BorderBrush="#242733" BorderThickness="1,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <!-- Sidebar Top Tab Strip -->
+                        <RowDefinition Height="Auto" />
+                        <!-- Scrollable Content of Selected Tab -->
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- MAIN SIDEBAR NAVIGATION TABS -->
+                    <Border Grid.Row="0" Background="#181921" BorderBrush="#242733" BorderThickness="0,0,0,1" Padding="10,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Tab 1: Mejorar (Belleza) -->
+                            <Button x:Name="TabMejorarButton" Grid.Column="0" Click="NavTab_Click" Tag="mejorar" Background="#261A2B" BorderBrush="#EC4899" BorderThickness="1" CornerRadius="6" Padding="4,6" HorizontalAlignment="Stretch">
+                                <StackPanel HorizontalAlignment="Center" Spacing="2">
+                                    <FontIcon Glyph="&#xE76E;" FontSize="14" Foreground="#F472B6" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Mejorar" FontSize="11" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Tab 2: Morfología 3D -->
+                            <Button x:Name="TabMorfologiaButton" Grid.Column="1" Click="NavTab_Click" Tag="morfologia" Background="Transparent" BorderThickness="0" CornerRadius="6" Padding="4,6" HorizontalAlignment="Stretch">
+                                <StackPanel HorizontalAlignment="Center" Spacing="2">
+                                    <FontIcon Glyph="&#xE8BD;" FontSize="14" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Morfología" FontSize="11" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Tab 3: Luz & Color -->
+                            <Button x:Name="TabLuzButton" Grid.Column="2" Click="NavTab_Click" Tag="luz" Background="Transparent" BorderThickness="0" CornerRadius="6" Padding="4,6" HorizontalAlignment="Stretch">
+                                <StackPanel HorizontalAlignment="Center" Spacing="2">
+                                    <FontIcon Glyph="&#xE706;" FontSize="14" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Luz &amp; Color" FontSize="11" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Tab 4: Filtros (LUTs) -->
+                            <Button x:Name="TabFiltrosButton" Grid.Column="3" Click="NavTab_Click" Tag="filtros" Background="Transparent" BorderThickness="0" CornerRadius="6" Padding="4,6" HorizontalAlignment="Stretch">
+                                <StackPanel HorizontalAlignment="Center" Spacing="2">
+                                    <FontIcon Glyph="&#xE790;" FontSize="14" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Filtros" FontSize="11" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Tab 5: Fondo -->
+                            <Button x:Name="TabFondoButton" Grid.Column="4" Click="NavTab_Click" Tag="fondo" Background="Transparent" BorderThickness="0" CornerRadius="6" Padding="4,6" HorizontalAlignment="Stretch">
+                                <StackPanel HorizontalAlignment="Center" Spacing="2">
+                                    <FontIcon Glyph="&#xEB9F;" FontSize="14" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Fondo" FontSize="11" Foreground="#9EA2B1" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- SCROLLABLE TAB CONTENT -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16,14,16,24">
+                        <Grid>
+                            <!-- ========================================================= -->
+                            <!-- TAB PANEL 1: MEJORAR (BELLEZA FACIAL & MAQUILLAJE)        -->
+                            <!-- ========================================================= -->
+                            <StackPanel x:Name="PanelMejorar" Spacing="14" Visibility="Visible">
+                                <!-- Master Beauty Switch -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,10">
+                                    <ToggleSwitch x:Name="BeautyMasterSwitch" Header="Retoque de Belleza Facial Activo" IsOn="True" Toggled="BeautyMasterSwitch_Toggled" />
+                                </Border>
+
+                                <!-- BASE TONAL SWATCHES (8 TONOS PORCELANA) -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="Tono de Base Porcelana" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Swatch 0: Sin Base -->
+                                            <Button Click="BaseToneSwatch_Click" Tag="none" Grid.Column="0" Width="34" Height="34" Padding="0" CornerRadius="17" BorderBrush="#EC4899" BorderThickness="2" Background="#262833" ToolTipService.ToolTip="Sin Base (Natural)">
+                                                <FontIcon Glyph="&#xE711;" FontSize="10" Foreground="#9CA3AF" />
+                                            </Button>
+                                            <!-- Swatch 1: Ébano -->
+                                            <Button Click="BaseToneSwatch_Click" Tag="tone-1" Grid.Column="1" Width="34" Height="34" Padding="0" CornerRadius="17" BorderBrush="#3B3F50" BorderThickness="1" Background="#824523" ToolTipService.ToolTip="Ébano cálido" />
+                                            <!-- Swatch 2: Bronce rojizo -->
+                                            <Button Click="BaseToneSwatch_Click" Tag="tone-2" Grid.Column="2" Width="34" Height="34" Padding="0" CornerRadius="17" BorderBrush="#3B3F50" BorderThickness="1" Background="#9D584B" ToolTipService.ToolTip="Bronce rojizo" />
+                                            <!-- Swatch 3: Canela -->
+                                            <Button Click="BaseToneSwatch_Click" Tag="tone-3" Grid.Column="3" Width="34" Height="34" Padding="0" CornerRadius="17" BorderBrush="#3B3F50" BorderThickness="1" Background="#B06F47" ToolTipService.ToolTip="Canela tostado" />
+                                            <!-- Swatch 4: Trigueño dorado -->
+                                            <Button Click="BaseToneSwatch_Click" Tag="tone-4" Grid.Column="4" Width="34" Height="34" Padding="0" CornerRadius="17" BorderBrush="#3B3F50" BorderThickness="1" Background="#C78453" ToolTipService.ToolTip="Trigueño dorado" />
+                                            <!-- Swatch 5: Neutro rosado -->
+                                            <Button Click="BaseToneSwatch_Click" Tag="tone-5" Grid.Column="5" Width="34" Height="34" Padding="0" CornerRadius="17" BorderBrush="#3B3F50" BorderThickness="1" Background="#CF917C" ToolTipService.ToolTip="Neutro rosado" />
+                                            <!-- Swatch 6: Beige claro -->
+                                            <Button Click="BaseToneSwatch_Click" Tag="tone-6" Grid.Column="6" Width="34" Height="34" Padding="0" CornerRadius="17" BorderBrush="#3B3F50" BorderThickness="1" Background="#DEB08D" ToolTipService.ToolTip="Beige claro" />
+                                            <!-- Swatch 7: Porcelana -->
+                                            <Button Click="BaseToneSwatch_Click" Tag="tone-7" Grid.Column="7" Width="34" Height="34" Padding="0" CornerRadius="17" BorderBrush="#3B3F50" BorderThickness="1" Background="#EBD0BD" ToolTipService.ToolTip="Porcelana Radiante" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- SKIN SMOOTHING & ACNE/PIMPLE ERASER -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="6">
+                                        <Grid>
+                                            <TextBlock Text="Piel Suave &amp; Eliminar Granos" FontSize="12" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="SkinSmoothingValText" Text="45%" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="SkinSmoothingSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.45" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                        <TextBlock Text="Disuelve acné, puntos rojos y relieve cutáneo preservando ojos y labios." FontSize="10" Foreground="#7D8294" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- TEETH WHITENING -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="6">
+                                        <Grid>
+                                            <TextBlock Text="Blanqueamiento Dental (Esmalte)" FontSize="12" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="TeethValText" Text="0%" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="TeethSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                        <TextBlock Text="Luminosidad en esmalte dental y neutralización de manchas amarillas." FontSize="10" Foreground="#7D8294" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- EYE BRIGHTENING (BIGO LIVE SPARKLE) -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="6">
+                                        <Grid>
+                                            <TextBlock Text="Aclarado de Ojos (Bigo Live Glint)" FontSize="12" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="EyeBrightenValText" Text="0%" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="EyeBrightenSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                        <TextBlock Text="Blanqueado de esclerótica + destello especular ring-light en el iris." FontSize="10" Foreground="#7D8294" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- MAKEUP SLIDERS: LIPSTICK, CONTOUR, EYESHADOW -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="Maquillaje Digital" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+
+                                        <!-- Lipstick -->
+                                        <Grid>
+                                            <TextBlock Text="Labial" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="LipstickValText" Text="0%" FontSize="12" Foreground="#F472B6" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="LipstickSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <!-- Contour -->
+                                        <Grid>
+                                            <TextBlock Text="Contorno Facial" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="ContourValText" Text="0%" FontSize="12" Foreground="#F472B6" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="ContourSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <!-- Eyeshadow -->
+                                        <Grid>
+                                            <TextBlock Text="Sombra de Ojos" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="EyeshadowValText" Text="0%" FontSize="12" Foreground="#F472B6" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="EyeshadowSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- ========================================================= -->
+                            <!-- TAB PANEL 2: MORFOLOGÍA 3D (AFILADO OREJAS, OJOS, NARIZ)  -->
+                            <!-- ========================================================= -->
+                            <StackPanel x:Name="PanelMorfologia" Spacing="14" Visibility="Collapsed">
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,10">
+                                    <TextBlock Text="Deformaciones biométricas calculadas sobre la malla facial 3D de 468 puntos." FontSize="11" Foreground="#9EA2B1" TextWrapping="Wrap" />
+                                </Border>
+
+                                <!-- FACE SLIMMING (MANDÍBULA BAJO OREJAS) -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="6">
+                                        <Grid>
+                                            <TextBlock Text="Afilado V-Line (Mandíbula &amp; Orejas)" FontSize="12" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="FaceSlimValText" Text="0%" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="FaceSlimSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                        <TextBlock Text="Se ubica en el ángulo mandibular bajo las orejas (172/397) sin tocar las mejillas." FontSize="10" Foreground="#7D8294" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- EYE ENLARGE -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="6">
+                                        <Grid>
+                                            <TextBlock Text="Agrandar Ojos" FontSize="12" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="EyeEnlargeValText" Text="0%" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="EyeEnlargeSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- BROW LIFT -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="6">
+                                        <Grid>
+                                            <TextBlock Text="Elevar Cejas" FontSize="12" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="BrowLiftValText" Text="0%" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="BrowLiftSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- NOSE SLIM / WIDEN (BIPOLAR) -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="6">
+                                        <Grid>
+                                            <TextBlock Text="Adelgazar / Ensanchar Nariz" FontSize="12" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="NoseSlimValText" Text="0.00" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="NoseSlimSlider" Minimum="-1.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                        <TextBlock Text="Desplaza el puente y aletas nasales sin distorsionar el rostro." FontSize="10" Foreground="#7D8294" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- LIP PLUMP -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="6">
+                                        <Grid>
+                                            <TextBlock Text="Volumen de Labios" FontSize="12" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="LipPlumpValText" Text="0%" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="LipPlumpSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="BeautySlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- ========================================================= -->
+                            <!-- TAB PANEL 3: LUZ & COLOR (CALIBRACIÓN + AUTO-TUNE IA)     -->
+                            <!-- ========================================================= -->
+                            <StackPanel x:Name="PanelLuz" Spacing="14" Visibility="Collapsed">
+                                <!-- AI Smart Switches -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,10">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="Inteligencia Artificial" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+                                        <ToggleSwitch x:Name="AiAutoTuneSwitch" Header="Auto-Tune Inteligente (Perfil Móvil)" Toggled="AiAutoTuneSwitch_Toggled" />
+                                        <ToggleSwitch x:Name="AiLightingSwitch" Header="Iluminación Facial IA (Ambient Fill)" Toggled="AiLightingSwitch_Toggled" />
+                                        <ToggleSwitch x:Name="AiDenoiseSwitch" Header="Reducción de Ruido IA (Bilateral)" Toggled="AiDenoiseSwitch_Toggled" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Manual Color Sliders -->
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="Calibración Fotométrica Manual" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+
+                                        <!-- Exposure -->
+                                        <Grid>
+                                            <TextBlock Text="Exposición" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="ExposureValText" Text="0.00 EV" FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="ExposureSlider" Minimum="-2.0" Maximum="2.0" StepFrequency="0.05" Value="0.0" ValueChanged="FilterSlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <!-- Brightness -->
+                                        <Grid>
+                                            <TextBlock Text="Brillo" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="BrightnessValText" Text="0.00" FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="BrightnessSlider" Minimum="-1.0" Maximum="1.0" StepFrequency="0.02" Value="0.0" ValueChanged="FilterSlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <!-- Contrast -->
+                                        <Grid>
+                                            <TextBlock Text="Contraste" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="ContrastValText" Text="1.00" FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="ContrastSlider" Minimum="0.0" Maximum="2.0" StepFrequency="0.05" Value="1.0" ValueChanged="FilterSlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <!-- Saturation -->
+                                        <Grid>
+                                            <TextBlock Text="Saturación" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="SaturationValText" Text="1.00" FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="SaturationSlider" Minimum="0.0" Maximum="2.0" StepFrequency="0.05" Value="1.0" ValueChanged="FilterSlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <!-- Sharpness -->
+                                        <Grid>
+                                            <TextBlock Text="Nitidez" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="SharpnessValText" Text="0.20" FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="SharpnessSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.02" Value="0.2" ValueChanged="FilterSlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <!-- White Balance -->
+                                        <Grid>
+                                            <TextBlock Text="Balance de Blancos (Temperatura)" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="WbValText" Text="0.00" FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="WbSlider" Minimum="-1.0" Maximum="1.0" StepFrequency="0.05" Value="0.0" ValueChanged="FilterSlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <!-- Hue -->
+                                        <Grid>
+                                            <TextBlock Text="Matiz / Tono" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="HueValText" Text="0.00" FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="HueSlider" Minimum="-1.0" Maximum="1.0" StepFrequency="0.05" Value="0.0" ValueChanged="FilterSlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- ========================================================= -->
+                            <!-- TAB PANEL 4: FILTROS CINEMATOGRÁFICOS (LUTS)              -->
+                            <!-- ========================================================= -->
+                            <StackPanel x:Name="PanelFiltros" Spacing="14" Visibility="Collapsed">
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock Text="LUTs y Filtros de Color" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+
+                                        <!-- Grid of Filters -->
+                                        <Grid ColumnSpacing="8" RowSpacing="8">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Filter 0: Original -->
+                                            <Button Click="FilterPreset_Click" Tag="original" Grid.Row="0" Grid.Column="0" Style="{StaticResource FilterCardButtonStyle}" BorderBrush="#EC4899">
+                                                <TextBlock Text="Original (Sin Filtro)" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                                            </Button>
+
+                                            <!-- Filter 1: Calidez Latina -->
+                                            <Button Click="FilterPreset_Click" Tag="calidez_latina" Grid.Row="0" Grid.Column="1" Style="{StaticResource FilterCardButtonStyle}">
+                                                <TextBlock Text="Calidez Latina" FontSize="11" Foreground="#D1D5DB" />
+                                            </Button>
+
+                                            <!-- Filter 2: Golden Glow -->
+                                            <Button Click="FilterPreset_Click" Tag="golden_glow" Grid.Row="1" Grid.Column="0" Style="{StaticResource FilterCardButtonStyle}">
+                                                <TextBlock Text="Golden Glow" FontSize="11" Foreground="#D1D5DB" />
+                                            </Button>
+
+                                            <!-- Filter 3: Miami Glow -->
+                                            <Button Click="FilterPreset_Click" Tag="miami_glow" Grid.Row="1" Grid.Column="1" Style="{StaticResource FilterCardButtonStyle}">
+                                                <TextBlock Text="Miami Glow" FontSize="11" Foreground="#D1D5DB" />
+                                            </Button>
+
+                                            <!-- Filter 4: Bigo Pop -->
+                                            <Button Click="FilterPreset_Click" Tag="bigo_pop" Grid.Row="2" Grid.Column="0" Style="{StaticResource FilterCardButtonStyle}">
+                                                <TextBlock Text="Bigo Pop" FontSize="11" Foreground="#D1D5DB" />
+                                            </Button>
+
+                                            <!-- Filter 5: Cyberpunk -->
+                                            <Button Click="FilterPreset_Click" Tag="cyberpunk" Grid.Row="2" Grid.Column="1" Style="{StaticResource FilterCardButtonStyle}">
+                                                <TextBlock Text="Cyberpunk" FontSize="11" Foreground="#D1D5DB" />
+                                            </Button>
+
+                                            <!-- Filter 6: Film Moody -->
+                                            <Button Click="FilterPreset_Click" Tag="film_moody" Grid.Row="3" Grid.Column="0" Style="{StaticResource FilterCardButtonStyle}">
+                                                <TextBlock Text="Film Moody" FontSize="11" Foreground="#D1D5DB" />
+                                            </Button>
+
+                                            <!-- Filter 7: Blanco y Negro -->
+                                            <Button Click="FilterPreset_Click" Tag="monochrome" Grid.Row="3" Grid.Column="1" Style="{StaticResource FilterCardButtonStyle}">
+                                                <TextBlock Text="Blanco y Negro" FontSize="11" Foreground="#D1D5DB" />
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- ========================================================= -->
+                            <!-- TAB PANEL 5: FONDO & PANTALLA VERDE                       -->
+                            <!-- ========================================================= -->
+                            <StackPanel x:Name="PanelFondo" Spacing="14" Visibility="Collapsed">
+                                <Border Background="#1A1C24" BorderBrush="#282C3A" BorderThickness="1" CornerRadius="10" Padding="14,12">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock Text="Segmentación de Sujeto y Fondo" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+
+                                        <ComboBox x:Name="BgModeComboBox" HorizontalAlignment="Stretch" SelectionChanged="BgModeComboBox_SelectionChanged">
+                                            <ComboBoxItem Content="Original (Sin Efecto)" Tag="0" IsSelected="True" />
+                                            <ComboBoxItem Content="Desenfoque Bokeh (Blur)" Tag="1" />
+                                            <ComboBoxItem Content="Estudio Virtual" Tag="2" />
+                                            <ComboBoxItem Content="Pantalla Verde (Chroma Key)" Tag="3" />
+                                        </ComboBox>
+
+                                        <Grid>
+                                            <TextBlock Text="Radio de Desenfoque" FontSize="12" Foreground="#D1D5DB" HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="BlurRadiusValText" Text="16 px" FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Slider x:Name="BlurRadiusSlider" Minimum="4.0" Maximum="64.0" StepFrequency="2.0" Value="16.0" ValueChanged="BgSlider_ValueChanged" Style="{StaticResource CustomSliderStyle}" />
+
+                                        <ToggleSwitch x:Name="PersonSegmentationSwitch" Header="Segmentación IA de Persona" IsOn="True" Toggled="PersonSegmentationSwitch_Toggled" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ================================================================= -->
+        <!-- 3. BOTTOM TELEMETRY BAR                                           -->
+        <!-- ================================================================= -->
+        <Border Grid.Row="2" Background="#111218" BorderBrush="#242733" BorderThickness="0,1,0,0" Padding="16,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Engine Details -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                    <TextBlock x:Name="TelemetryGpuText" Text="Acelerador: DirectML GPU (NVIDIA / AMD / Intel)" FontSize="11" Foreground="#8A8E9E" />
+                    <TextBlock x:Name="TelemetryAiMsText" Text="IA Latencia: 1.8 ms" FontSize="11" Foreground="#8A8E9E" />
+                    <TextBlock x:Name="TelemetryGpuMsText" Text="Procesamiento: 2.1 ms" FontSize="11" Foreground="#8A8E9E" />
+                </StackPanel>
+
+                <!-- Right Version -->
+                <TextBlock Grid.Column="2" Text="CamAr Studio v2.0 • WinUI 3 Native" FontSize="11" Foreground="#5A5E70" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

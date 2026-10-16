@@ -9,10 +9,10 @@ import type { EffectState, EngineTelemetry, CameraDeviceInfo, AudioDeviceInfo } 
 import { engineClient } from './services/wsClient';
 
 const DEFAULT_EFFECTS: EffectState = {
-  selectedCameraId: 'auto',
+  selectedCameraId: 'synthetic',
   selectedWidth: 1920,
   selectedHeight: 1080,
-  selectedFps: 30,
+  selectedFps: 60,
   selectedFormat: 'NV12',
 
   colorRange: 0, // Full
@@ -58,6 +58,9 @@ const DEFAULT_EFFECTS: EffectState = {
 
   videoBackend: 'cpu',
   aiBackend: 'cpu',
+
+  filterLut: 'none',
+  filterIntensity: 0.80,
 };
 
 const getInitialEffects = (): EffectState => {
@@ -65,6 +68,12 @@ const getInitialEffects = (): EffectState => {
     const raw = localStorage.getItem('camar_presets');
     if (raw) {
       const parsed = JSON.parse(raw);
+      if (parsed.brightness !== undefined && Math.abs(parsed.brightness) > 1.0) {
+        parsed.brightness = 0.0;
+      }
+      if (parsed.exposure !== undefined && Math.abs(parsed.exposure) > 2.0) {
+        parsed.exposure = 0.0;
+      }
       return { ...DEFAULT_EFFECTS, ...parsed };
     }
   } catch {}
@@ -116,12 +125,19 @@ export const App: React.FC = () => {
         setCameras(devices.cameras);
         setMicrophones(devices.microphones);
 
-        // Comprobar si ya existe un preset guardado válido
+        // Comprobar si el usuario ya tenía una cámara física guardada previamente en presets
         const currentSaved = getInitialEffects();
-        const matchedCam = devices.cameras.find((c) => c.id === currentSaved.selectedCameraId);
+        const hasSavedPhysicalCamera =
+          currentSaved.selectedCameraId &&
+          currentSaved.selectedCameraId !== 'synthetic' &&
+          currentSaved.selectedCameraId !== 'auto';
+
+        const matchedCam = hasSavedPhysicalCamera
+          ? devices.cameras.find((c) => c.id === currentSaved.selectedCameraId)
+          : null;
 
         if (matchedCam && matchedCam.formats.length > 0) {
-          // El preset guardado corresponde a una cámara conectada
+          // El usuario ya había seleccionado esta cámara en una sesión previa -> Restaurarla
           const matchedFormat =
             matchedCam.formats.find(
               (f) =>
@@ -147,27 +163,32 @@ export const App: React.FC = () => {
             matchedFormat.fps,
             matchedFormat.format
           );
-        } else if (devices.cameras.length > 0) {
-          // Si no había preset o la cámara no está conectada, elegir la primera física
-          const firstCam = devices.cameras.find((c) => c.id !== 'synthetic') || devices.cameras[0];
-          if (firstCam && firstCam.formats.length > 0) {
-            const bestFormat = firstCam.formats[0];
-            setEffects((prev) => ({
-              ...prev,
-              selectedCameraId: firstCam.id,
-              selectedWidth: bestFormat.width,
-              selectedHeight: bestFormat.height,
-              selectedFps: bestFormat.fps,
-              selectedFormat: bestFormat.format,
-            }));
-            engineClient.selectCamera(
-              firstCam.id,
-              bestFormat.width,
-              bestFormat.height,
-              bestFormat.fps,
-              bestFormat.format
-            );
-          }
+        } else {
+          // POR DEFECTO: Si previamente no ha seleccionado nada, usar el Dummy Simulator del inicio
+          const syntheticCam = devices.cameras.find((c) => c.id === 'synthetic');
+          const simFormat = syntheticCam?.formats[0] || {
+            width: 1920,
+            height: 1080,
+            fps: 60,
+            format: 'NV12',
+          };
+
+          setEffects((prev) => ({
+            ...prev,
+            selectedCameraId: 'synthetic',
+            selectedWidth: simFormat.width,
+            selectedHeight: simFormat.height,
+            selectedFps: simFormat.fps,
+            selectedFormat: simFormat.format,
+          }));
+
+          engineClient.selectCamera(
+            'synthetic',
+            simFormat.width,
+            simFormat.height,
+            simFormat.fps,
+            simFormat.format
+          );
         }
 
         if (devices.microphones.length > 0) {
@@ -191,13 +212,15 @@ export const App: React.FC = () => {
               selectedHeight: savedPreset.selected_height || prev.selectedHeight,
               selectedFps: savedPreset.selected_fps || prev.selectedFps,
               selectedFormat: savedPreset.selected_format || prev.selectedFormat,
+              colorRange: savedPreset.color_range === 'Limited' ? 1 : 0,
+              colorSpace: savedPreset.color_space === 'SRgb' ? 1 : savedPreset.color_space === 'Rec601' ? 2 : savedPreset.color_space === 'Rec2020' ? 3 : 0,
               saturation: savedPreset.saturation ?? prev.saturation,
               contrast: savedPreset.contrast ?? prev.contrast,
               sharpness: savedPreset.sharpness ?? prev.sharpness,
               hue: savedPreset.hue ?? prev.hue,
               whiteBalance: savedPreset.white_balance ?? prev.whiteBalance,
-              exposure: savedPreset.exposure ?? prev.exposure,
-              brightness: savedPreset.brightness ?? prev.brightness,
+              exposure: (savedPreset.exposure !== undefined && Math.abs(savedPreset.exposure) <= 2.0) ? savedPreset.exposure : 0.0,
+              brightness: (savedPreset.brightness !== undefined && Math.abs(savedPreset.brightness) <= 1.0) ? savedPreset.brightness : 0.0,
               aiLightingEnabled: savedPreset.ai_lighting_enabled ?? prev.aiLightingEnabled,
               aiDenoiseEnabled: savedPreset.ai_denoise_enabled ?? prev.aiDenoiseEnabled,
               aiAutoTuneEnabled: savedPreset.ai_auto_tune_enabled ?? prev.aiAutoTuneEnabled,
@@ -216,6 +239,8 @@ export const App: React.FC = () => {
               lipstick: savedPreset.lipstick ?? prev.lipstick,
               eyeshadow: savedPreset.eyeshadow ?? prev.eyeshadow,
               contour: savedPreset.contour ?? prev.contour,
+              filterLut: savedPreset.filter_lut || prev.filterLut,
+              filterIntensity: savedPreset.filter_intensity ?? prev.filterIntensity,
               audioVolume: savedPreset.audio_volume ?? prev.audioVolume,
               audioMuted: savedPreset.audio_muted ?? prev.audioMuted,
             };

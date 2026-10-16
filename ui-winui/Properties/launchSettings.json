@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "CamArStudio.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "CamArStudio.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

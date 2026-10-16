@@ -91,6 +91,29 @@ export interface EffectState {
   // Aceleración de Hardware (CPU, GPU, NPU)
   videoBackend: string; // 'cpu' (default), 'gpu_d3d12'
   aiBackend: string;    // 'cpu' (default), 'npu', 'gpu'
+
+  // Capa Master de Filtros Cinematográficos / LUTs
+  filterLut?: string;
+  filterIntensity?: number;
+
+  // Perfiles de Hardware independientes por cámara
+  cameraProfiles?: Record<string, CameraHardwareProfile>;
+}
+
+export interface CameraHardwareProfile {
+  width: number;
+  height: number;
+  fps: number;
+  format: string;
+  saturation: number;
+  contrast: number;
+  sharpness: number;
+  hue: number;
+  whiteBalance: number;
+  exposure: number;
+  brightness: number;
+  colorRange: number;
+  colorSpace: number;
 }
 
 export interface HardwareOption {

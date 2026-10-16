@@ -1,0 +1,24 @@
+{
+  "id": "kpop_idol",
+  "name": "K-Pop Idol",
+  "category": "estilo_ins",
+  "default_filter_intensity": 85,
+  "default_makeup_intensity": 70,
+  "face_light": {
+    "brightness": 0.08,
+    "contrast": 1.07,
+    "saturation": 1.06,
+    "white_balance": -0.04,
+    "exposure": 0.06,
+    "foundation_tone": "tone-7",
+    "skin_smoothing": 0.70
+  },
+  "makeup": {
+    "lipstick": 0.55,
+    "eyeshadow": 0.40,
+    "contour": 0.25,
+    "teeth_whitening": 0.60,
+    "eye_brighten": 0.85,
+    "lip_plump": 0.20
+  }
+}
