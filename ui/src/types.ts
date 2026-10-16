@@ -64,6 +64,8 @@ export interface EffectState {
   eyeEnlarge: number;
   eyeRound?: number;
   eyeBrighten?: number;
+  eyeCatchlight?: number;
+  eyelashes?: number;
   irisLighting?: number;
   irisColor?: string;
   browLift: number;
@@ -114,6 +116,8 @@ export interface BaseAppearanceState {
   eyeEnlarge: number;
   eyeRound?: number;
   eyeBrighten?: number;
+  eyeCatchlight?: number;
+  eyelashes?: number;
   browLift: number;
   noseSlim: number;
   lipPlump: number;
@@ -211,6 +215,8 @@ export interface PresetMakeup {
   contour: number;
   teeth_whitening: number;
   eye_brighten: number;
+  eye_catchlight?: number;
+  eyelashes?: number;
   lip_plump: number;
   eye_enlarge?: number;
   eye_round?: number;

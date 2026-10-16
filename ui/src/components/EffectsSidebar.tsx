@@ -142,6 +142,8 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     eyeEnlarge: 0,
     eyeRound: 0,
     eyeBrighten: 0,
+    eyeCatchlight: 0,
+    eyelashes: 0,
     browLift: 0,
     noseSlim: 0,
     lipPlump: 0,
@@ -229,6 +231,8 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     const baseEyeEnlarge = base.eyeEnlarge / 100.0;
     const baseEyeRound = (base.eyeRound || 0) / 100.0;
     const baseEyeBrighten = (base.eyeBrighten || 0) / 100.0;
+    const baseEyeCatchlight = (base.eyeCatchlight || 0) / 100.0;
+    const baseEyelashes = (base.eyelashes || 0) / 100.0;
     const baseBrowLift = base.browLift / 100.0;
     const baseNoseSlim = base.noseSlim / 50.0;
     const baseLipPlump = base.lipPlump / 100.0;
@@ -251,6 +255,8 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
         eyeEnlarge: baseEyeEnlarge,
         eyeRound: baseEyeRound,
         eyeBrighten: baseEyeBrighten,
+        eyeCatchlight: baseEyeCatchlight,
+        eyelashes: baseEyelashes,
         browLift: baseBrowLift,
         noseSlim: baseNoseSlim,
         lipPlump: baseLipPlump,
@@ -284,6 +290,8 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     const compositeContour = Number(Math.min(1.0, Math.max(0.0, baseContour + mk.contour * mRatio)).toFixed(3));
     const compositeTeeth = Number(Math.min(1.0, Math.max(0.0, baseTeeth + mk.teeth_whitening * mRatio)).toFixed(3));
     const compositeEyeBrighten = Number(Math.min(1.0, Math.max(0.0, baseEyeBrighten + (mk.eye_brighten || 0) * mRatio)).toFixed(3));
+    const compositeEyeCatchlight = Number(Math.min(1.0, Math.max(0.0, baseEyeCatchlight + (mk.eye_catchlight || 0) * mRatio)).toFixed(3));
+    const compositeEyelashes = Number(Math.min(1.0, Math.max(0.0, baseEyelashes + (mk.eyelashes || 0) * mRatio)).toFixed(3));
     const compositeLipPlump = Number(Math.min(1.0, Math.max(0.0, baseLipPlump + (mk.lip_plump || 0) * mRatio * 0.5)).toFixed(3));
     const compositeEyeEnlarge = Number(Math.min(1.0, Math.max(0.0, baseEyeEnlarge + (mk.eye_enlarge || 0) * mRatio * 0.4)).toFixed(3));
     const compositeEyeRound = Number(Math.min(1.0, Math.max(0.0, baseEyeRound + (mk.eye_round || 0) * mRatio * 0.4)).toFixed(3));
@@ -306,6 +314,8 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
       contour: compositeContour,
       teethWhitening: compositeTeeth,
       eyeBrighten: compositeEyeBrighten,
+      eyeCatchlight: compositeEyeCatchlight,
+      eyelashes: compositeEyelashes,
       lipPlump: compositeLipPlump,
       eyeEnlarge: compositeEyeEnlarge,
       eyeRound: compositeEyeRound,
@@ -381,6 +391,8 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
         contour: baseAppearance.contour / 100.0,
         teeth_whitening: baseAppearance.teethWhitening / 100.0,
         eye_brighten: (baseAppearance.eyeBrighten || 0) / 100.0,
+        eye_catchlight: (baseAppearance.eyeCatchlight || 0) / 100.0,
+        eyelashes: (baseAppearance.eyelashes || 0) / 100.0,
         lip_plump: baseAppearance.lipPlump / 100.0,
         eye_enlarge: baseAppearance.eyeEnlarge / 100.0,
         eye_round: (baseAppearance.eyeRound || 0) / 100.0,
@@ -735,6 +747,44 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
                     value={baseAppearance.eyeBrighten || 0}
                     onChange={(e) => updateBaseAppearance({ eyeBrighten: Number(e.target.value) })}
                     className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                </div>
+
+                {/* 4.3 Brillo de Pupila / Catchlight (Destello Ring-Light) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                      <SunMedium className="w-4 h-4 text-amber-300" />
+                      <span>Brillo de Pupila (Catchlight)</span>
+                    </span>
+                    <span className="font-mono text-amber-300">{baseAppearance.eyeCatchlight || 0}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={baseAppearance.eyeCatchlight || 0}
+                    onChange={(e) => updateBaseAppearance({ eyeCatchlight: Number(e.target.value) })}
+                    className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-amber-300"
+                  />
+                </div>
+
+                {/* 4.4 Pestañas & Delineado (Estilo Bigo / Lash Decal) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                      <Eye className="w-4 h-4 text-pink-400" />
+                      <span>Pestañas & Delineado (Estilo Bigo)</span>
+                    </span>
+                    <span className="font-mono text-pink-300">{baseAppearance.eyelashes || 0}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={baseAppearance.eyelashes || 0}
+                    onChange={(e) => updateBaseAppearance({ eyelashes: Number(e.target.value) })}
+                    className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-pink-400"
                   />
                 </div>
 
