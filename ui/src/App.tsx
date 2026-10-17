@@ -54,6 +54,8 @@ const DEFAULT_EFFECTS: EffectState = {
   lipstick: 0.0,
   lipstickColor: 'rose_natural',
   eyeshadow: 0.0,
+  eyeshadowColor: 'bronze',
+  eyeshadowStyle: 'natural_nude',
   contour: 0.0,
   bgMode: 0,
   blurRadius: 16.0,
