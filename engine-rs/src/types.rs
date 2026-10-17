@@ -209,6 +209,10 @@ pub struct StudioConfig {
     pub lipstick_color: String, // 'none', 'rose_natural', 'coral_peach', 'soft_pink', 'nude_velvet', 'classic_red', 'berry_plum', 'wine_burgundy'
     #[serde(default)]
     pub eyeshadow: f32, // 0.0 a 1.0 (Sombra)
+    #[serde(default = "default_eyeshadow_color")]
+    pub eyeshadow_color: String, // 'bronze', 'rose', 'peach', 'plum', 'smoky_black', 'gold', 'champagne', 'none'
+    #[serde(default = "default_eyeshadow_style")]
+    pub eyeshadow_style: String, // 'natural_nude', 'smoky_glam', 'cat_wing', 'sunset_glow'
     #[serde(default)]
     pub contour: f32, // 0.0 a 1.0 (Contorno)
 
@@ -323,6 +327,10 @@ pub struct BeautyJsonConfig {
     pub lipstick_color: String,
     #[serde(default)]
     pub eyeshadow: f32,
+    #[serde(default = "default_eyeshadow_color")]
+    pub eyeshadow_color: String,
+    #[serde(default = "default_eyeshadow_style")]
+    pub eyeshadow_style: String,
     #[serde(default)]
     pub contour: f32,
     pub bg_mode: BackgroundMode,
@@ -385,6 +393,10 @@ pub struct BaseAppearanceConfig {
     pub lipstick_color: String,
     #[serde(default)]
     pub eyeshadow: f32,
+    #[serde(default = "default_eyeshadow_color", alias = "eyeshadowColor")]
+    pub eyeshadow_color: String,
+    #[serde(default = "default_eyeshadow_style", alias = "eyeshadowStyle")]
+    pub eyeshadow_style: String,
     #[serde(default)]
     pub contour: f32,
     #[serde(default, alias = "irisLighting")]
@@ -397,6 +409,8 @@ fn default_smoothing_100() -> f32 { 45.0 }
 fn default_foundation_intensity_100() -> f32 { 40.0 }
 fn default_none_str() -> String { "none".to_string() }
 fn default_lipstick_color() -> String { "rose_natural".to_string() }
+fn default_eyeshadow_color() -> String { "bronze".to_string() }
+fn default_eyeshadow_style() -> String { "natural_nude".to_string() }
 fn default_favorite_presets() -> Vec<String> {
     vec![
         "charm".to_string(),
@@ -428,6 +442,8 @@ impl Default for BaseAppearanceConfig {
             lipstick: 0.0,
             lipstick_color: "rose_natural".to_string(),
             eyeshadow: 0.0,
+            eyeshadow_color: "bronze".to_string(),
+            eyeshadow_style: "natural_nude".to_string(),
             contour: 0.0,
             iris_lighting: 0.0,
             iris_color: "none".to_string(),
@@ -512,6 +528,8 @@ impl StudioConfig {
         self.base_appearance.lipstick = (self.lipstick * 100.0).round();
         self.base_appearance.lipstick_color = self.lipstick_color.clone();
         self.base_appearance.eyeshadow = (self.eyeshadow * 100.0).round();
+        self.base_appearance.eyeshadow_color = self.eyeshadow_color.clone();
+        self.base_appearance.eyeshadow_style = self.eyeshadow_style.clone();
         self.base_appearance.contour = (self.contour * 100.0).round();
         self.base_appearance.iris_lighting = (self.iris_lighting * 100.0).round();
         self.base_appearance.iris_color = self.iris_color.clone();
@@ -567,6 +585,8 @@ impl StudioConfig {
             lipstick: self.lipstick,
             lipstick_color: self.lipstick_color.clone(),
             eyeshadow: self.eyeshadow,
+            eyeshadow_color: self.eyeshadow_color.clone(),
+            eyeshadow_style: self.eyeshadow_style.clone(),
             contour: self.contour,
             bg_mode: self.bg_mode,
             blur_radius: self.blur_radius,
@@ -673,6 +693,8 @@ impl StudioConfig {
                     cfg.lipstick = b.lipstick;
                     cfg.lipstick_color = b.lipstick_color;
                     cfg.eyeshadow = b.eyeshadow;
+                    cfg.eyeshadow_color = b.eyeshadow_color;
+                    cfg.eyeshadow_style = b.eyeshadow_style;
                     cfg.contour = b.contour;
                     cfg.bg_mode = b.bg_mode;
                     cfg.blur_radius = b.blur_radius;
@@ -787,6 +809,8 @@ impl Default for StudioConfig {
             lipstick: 0.0,
             lipstick_color: "rose_natural".to_string(),
             eyeshadow: 0.0,
+            eyeshadow_color: "bronze".to_string(),
+            eyeshadow_style: "natural_nude".to_string(),
             contour: 0.0,
             bg_mode: BackgroundMode::None,
             blur_radius: 16.0,

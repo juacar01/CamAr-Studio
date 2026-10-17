@@ -560,6 +560,65 @@ fn load_lens_sprite_png(name: &str, embedded_png: &[u8]) -> Vec<[f32; 4]> {
     buf
 }
 
+/// Carga un Sprite RGBA 256x256 (.png) de sombras de ojos desde disco (`sprites/eyeshadow/{name}.png`) o recurso embebido.
+fn load_eyeshadow_sprite_png(name: &str, embedded_png: &[u8]) -> Vec<[f32; 4]> {
+    let mut disk_img = None;
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            let candidate = parent.join("sprites").join("eyeshadow").join(format!("{}.png", name));
+            if candidate.exists() {
+                if let Ok(img) = image::open(&candidate) {
+                    disk_img = Some(img);
+                }
+            }
+        }
+    }
+    let dyn_img = disk_img.or_else(|| image::load_from_memory(embedded_png).ok());
+    let mut buf = vec![[0.0f32; 4]; 256 * 256];
+    if let Some(img) = dyn_img {
+        let rgba = img.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        for y in 0..256usize {
+            let sy = ((y * h as usize) / 256).min(h.saturating_sub(1) as usize) as u32;
+            for x in 0..256usize {
+                let sx = ((x * w as usize) / 256).min(w.saturating_sub(1) as usize) as u32;
+                let px = rgba.get_pixel(sx, sy).0;
+                buf[y * 256 + x] = [
+                    px[0] as f32 / 255.0,
+                    px[1] as f32 / 255.0,
+                    px[2] as f32 / 255.0,
+                    px[3] as f32 / 255.0,
+                ];
+            }
+        }
+    }
+    buf
+}
+
+fn get_eyeshadow_color_rgb(color: &str) -> Option<(f32, f32, f32)> {
+    match color {
+        "bronze" => Some((0.72, 0.45, 0.30)),
+        "rose" => Some((0.82, 0.38, 0.48)),
+        "peach" => Some((0.88, 0.52, 0.42)),
+        "plum" => Some((0.55, 0.22, 0.38)),
+        "smoky_black" => Some((0.18, 0.18, 0.20)),
+        "gold" => Some((0.85, 0.68, 0.32)),
+        "champagne" => Some((0.92, 0.82, 0.72)),
+        "none" => None,
+        _ => Some((0.72, 0.45, 0.30)),
+    }
+}
+
+fn get_eyeshadow_style_index(style: &str) -> usize {
+    match style {
+        "natural_nude" => 0,
+        "smoky_glam" => 1,
+        "cat_wing" => 2,
+        "sunset_glow" => 3,
+        _ => 0,
+    }
+}
+
 /// Localizador óptico de disco circular de iris (centro sub-píxel + radio exacto) inmune a reflejos (catchlights).
 /// Construye un perfil horizontal inmune a brillos especulares en la franja media-inferior de la apertura
 /// palpebral (libre de pestañas superiores), localiza los picos de esclerótica izquierda y derecha y mide
@@ -750,6 +809,8 @@ pub struct EyeAccentParams {
     pub right_x: f32,
     pub upper_pts: [(f32, f32); 9],
     pub lower_pts: [(f32, f32); 9],
+    pub es_upper: [(f32, f32); 9],
+    pub es_crease: [(f32, f32); 9],
     pub pupil_x: f32,
     pub pupil_y: f32,
     pub iris_rad: f32,
@@ -859,6 +920,9 @@ pub struct VideoProcessor {
     /// Sprites RGBA 256x256 (.png) de Pupilentes con fibras de iris, criptas alfa, collarette y agujero de pupila:
     /// [0]=honey, [1]=hazel, [2]=emerald, [3]=ice_blue, [4]=sapphire, [5]=gray, [6]=violet
     lens_sprites_rgba: Vec<Vec<[f32; 4]>>,
+    /// Sprites RGBA 256x256 (.png) de Sombras de Ojos deformables con canal Alpha:
+    /// [0]=natural_nude, [1]=smoky_glam, [2]=cat_wing, [3]=sunset_glow
+    eyeshadow_sprites_rgba: Vec<Vec<[f32; 4]>>,
     /// Sprite 2D pre-generado 128x128 de soporte para modo Luz de Iris sin color
     contact_lens_sprite: Vec<[f32; 4]>,
     /// Estabilizador temporal adaptativo 1€ de los discos de iris [(cx, cy, rad, iris_lum, sclera_lum); 2]
@@ -928,6 +992,14 @@ impl VideoProcessor {
             load_lens_sprite_png("sapphire", include_bytes!("../assets/sprites/lenses/sapphire.png")),
             load_lens_sprite_png("gray", include_bytes!("../assets/sprites/lenses/gray.png")),
             load_lens_sprite_png("violet", include_bytes!("../assets/sprites/lenses/violet.png")),
+        ];
+
+        // Carga de los 4 recursos gráficos reales (.png RGBA 256x256) de Sombras de Ojos con canal Alpha
+        let eyeshadow_sprites_rgba = vec![
+            load_eyeshadow_sprite_png("natural_nude", include_bytes!("../assets/sprites/eyeshadow/natural_nude.png")),
+            load_eyeshadow_sprite_png("smoky_glam", include_bytes!("../assets/sprites/eyeshadow/smoky_glam.png")),
+            load_eyeshadow_sprite_png("cat_wing", include_bytes!("../assets/sprites/eyeshadow/cat_wing.png")),
+            load_eyeshadow_sprite_png("sunset_glow", include_bytes!("../assets/sprites/eyeshadow/sunset_glow.png")),
         ];
 
         // Pre-generación del Sprite 128x128 de soporte (para Luz de Iris sin color)
@@ -1027,6 +1099,7 @@ impl VideoProcessor {
             gaussian_lut,
             srgb_lut,
             lens_sprites_rgba,
+            eyeshadow_sprites_rgba,
             contact_lens_sprite,
             smoothed_iris_discs: None,
             lip_sprite,
@@ -1305,7 +1378,16 @@ impl VideoProcessor {
         let foundation_tone = if beauty_enabled { config.foundation_tone.as_str() } else { "none" };
         let foundation_intensity = if beauty_enabled { config.foundation_intensity.clamp(0.0, 1.0) } else { 0.0 };
         let contour = if beauty_enabled { config.contour.clamp(0.0, 1.0) } else { 0.0 };
-        let _eyeshadow = if beauty_enabled { config.eyeshadow.clamp(0.0, 1.0) } else { 0.0 };
+        let eyeshadow = if beauty_enabled { config.eyeshadow.clamp(0.0, 1.0) } else { 0.0 };
+        let eyeshadow_color = if beauty_enabled { config.eyeshadow_color.as_str() } else { "none" };
+        let eyeshadow_style = if beauty_enabled { config.eyeshadow_style.as_str() } else { "natural_nude" };
+        let eyeshadow_target_rgb = get_eyeshadow_color_rgb(eyeshadow_color);
+        let selected_eyeshadow_style_idx = get_eyeshadow_style_index(eyeshadow_style);
+        let selected_eyeshadow_rgba = if eyeshadow > 0.001 && eyeshadow_target_rgb.is_some() {
+            self.eyeshadow_sprites_rgba.get(selected_eyeshadow_style_idx)
+        } else {
+            None
+        };
 
         let face_slim = if beauty_enabled { config.face_slim.clamp(0.0, 1.0) } else { 0.0 };
         let eye_enlarge = if beauty_enabled { config.eye_enlarge.clamp(0.0, 1.0) } else { 0.0 };
@@ -1497,7 +1579,8 @@ impl VideoProcessor {
                 || eye_catchlight > 0.001
                 || eye_brighten > 0.001
                 || iris_lighting > 0.001
-                || selected_lens_idx.is_some())
+                || selected_lens_idx.is_some()
+                || (eyeshadow > 0.001 && selected_eyeshadow_rgba.is_some()))
         {
             if let Some(face) = active_face {
                 if face.landmarks.len() >= 468 {
@@ -1670,15 +1753,45 @@ impl VideoProcessor {
                     let left_x_l = upper_pts_l[0].0.min(lower_pts_l[0].0);
                     let right_x_l = upper_pts_l[8].0.max(lower_pts_l[8].0);
 
+                    let es_upper_l = [
+                        (wing_l.x, wing_l.y),
+                        (lm[33].x, lm[33].y),
+                        (lm[246].x, lm[246].y),
+                        (lm[161].x, lm[161].y),
+                        (lm[159].x, lm[159].y),
+                        (lm[158].x, lm[158].y),
+                        (lm[157].x, lm[157].y),
+                        (lm[173].x, lm[173].y),
+                        (lm[133].x, lm[133].y),
+                    ];
+                    let es_crease_l = [
+                        (wing_l.x, wing_l.y - eye_h_l * 0.70),
+                        (lm[33].x, lm[33].y - (lm[33].y - lm[70].y) * 0.50),
+                        (lm[246].x, lm[225].y),
+                        (lm[161].x, lm[224].y),
+                        (lm[159].x, lm[159].y - (lm[159].y - lm[105].y) * 0.55),
+                        (lm[158].x, lm[223].y),
+                        (lm[157].x, lm[222].y),
+                        (lm[173].x, lm[221].y),
+                        (lm[133].x, lm[133].y - (lm[133].y - lm[107].y) * 0.35),
+                    ];
+                    let min_y_l = if eyeshadow > 0.001 {
+                        (lm[105].y.min(lm[223].y) - 6.0).max(0.0)
+                    } else {
+                        (lm[159].y.min(pupil_l_y - iris_rad_l) - eye_h_l * 0.50 - 7.0).max(0.0)
+                    };
+
                     let eye_l_params = EyeAccentParams {
                         min_x: (wing_l.x.min(left_x_l) - 6.0).max(0.0),
                         max_x: (right_x_l + 6.0).min(width as f32),
-                        min_y: (lm[159].y.min(pupil_l_y - iris_rad_l) - eye_h_l * 0.50 - 7.0).max(0.0),
+                        min_y: min_y_l,
                         max_y: (lm[145].y.max(pupil_l_y + iris_rad_l) + 9.0).min(height as f32),
                         left_x: left_x_l,
                         right_x: right_x_l,
                         upper_pts: upper_pts_l,
                         lower_pts: lower_pts_l,
+                        es_upper: es_upper_l,
+                        es_crease: es_crease_l,
                         pupil_x: pupil_l_x,
                         pupil_y: pupil_l_y,
                         iris_rad: iris_rad_l,
@@ -1710,15 +1823,45 @@ impl VideoProcessor {
                     let left_x_r = upper_pts_r[0].0.min(lower_pts_r[0].0);
                     let right_x_r = upper_pts_r[8].0.max(lower_pts_r[8].0);
 
+                    let es_upper_r = [
+                        (lm[362].x, lm[362].y),
+                        (lm[398].x, lm[398].y),
+                        (lm[384].x, lm[384].y),
+                        (lm[385].x, lm[385].y),
+                        (lm[386].x, lm[386].y),
+                        (lm[387].x, lm[387].y),
+                        (lm[388].x, lm[388].y),
+                        (lm[263].x, lm[263].y),
+                        (wing_r.x, wing_r.y),
+                    ];
+                    let es_crease_r = [
+                        (lm[362].x, lm[362].y - (lm[362].y - lm[336].y) * 0.35),
+                        (lm[398].x, lm[441].y),
+                        (lm[384].x, lm[442].y),
+                        (lm[385].x, lm[443].y),
+                        (lm[386].x, lm[386].y - (lm[386].y - lm[334].y) * 0.55),
+                        (lm[387].x, lm[444].y),
+                        (lm[388].x, lm[445].y),
+                        (lm[263].x, lm[263].y - (lm[263].y - lm[300].y) * 0.50),
+                        (wing_r.x, wing_r.y - eye_h_r * 0.70),
+                    ];
+                    let min_y_r = if eyeshadow > 0.001 {
+                        (lm[334].y.min(lm[443].y) - 6.0).max(0.0)
+                    } else {
+                        (lm[386].y.min(pupil_r_y - iris_rad_r) - eye_h_r * 0.50 - 7.0).max(0.0)
+                    };
+
                     let eye_r_params = EyeAccentParams {
                         min_x: (left_x_r - 6.0).max(0.0),
                         max_x: (wing_r.x.max(right_x_r) + 6.0).min(width as f32),
-                        min_y: (lm[386].y.min(pupil_r_y - iris_rad_r) - eye_h_r * 0.50 - 7.0).max(0.0),
+                        min_y: min_y_r,
                         max_y: (lm[374].y.max(pupil_r_y + iris_rad_r) + 9.0).min(height as f32),
                         left_x: left_x_r,
                         right_x: right_x_r,
                         upper_pts: upper_pts_r,
                         lower_pts: lower_pts_r,
+                        es_upper: es_upper_r,
+                        es_crease: es_crease_r,
                         pupil_x: pupil_r_x,
                         pupil_y: pupil_r_y,
                         iris_rad: iris_rad_r,
@@ -2420,6 +2563,43 @@ impl VideoProcessor {
                     if let Some(([ref eye_l, ref eye_r], backlight_factor)) = eye_accents {
                         for eye in [eye_l, eye_r] {
                             if eye_sx >= eye.min_x && eye_sx <= eye.max_x && eye_sy >= eye.min_y && eye_sy <= eye.max_y {
+                                // 0. Sombra de Ojos Deformable con Sprite 256x256 RGBA + Tint Color + Alpha
+                                if eyeshadow > 0.001 && eye_sx >= eye.es_upper[0].0 && eye_sx <= eye.es_upper[8].0 {
+                                    let y_lid = sample_lid_y(&eye.es_upper, eye_sx);
+                                    if eye_sy <= y_lid + 0.5 {
+                                        let y_crease = sample_lid_y(&eye.es_crease, eye_sx);
+                                        let crease_h = (y_lid - y_crease).max(3.5);
+                                        let v_norm = (y_lid - eye_sy) / crease_h;
+                                        if v_norm <= 1.20 {
+                                            let u_norm = if eye.is_viewer_left {
+                                                ((eye.inner_x - eye_sx) / (eye.inner_x - eye.es_upper[0].0)).clamp(0.0, 1.0)
+                                            } else {
+                                                ((eye_sx - eye.inner_x) / (eye.es_upper[8].0 - eye.inner_x)).clamp(0.0, 1.0)
+                                            };
+                                            let fx_s = u_norm * 255.0;
+                                            let fy_s = (1.0 - v_norm.clamp(0.0, 1.0)) * 255.0;
+                                            if let Some(es_sprite) = selected_eyeshadow_rgba {
+                                                let [sp_r, sp_g, sp_b, sp_a] = sample_sprite_bilinear_256(es_sprite, fx_s, fy_s);
+                                                let lid_guard = ((y_lid - eye_sy) / 0.85).clamp(0.0, 1.0);
+                                                let eff_alpha = (sp_a * eyeshadow * lid_guard * 0.85).clamp(0.0, 0.90);
+                                                if eff_alpha > 0.001 {
+                                                    if let Some((tint_r, tint_g, tint_b)) = eyeshadow_target_rgb {
+                                                        let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                                                        let skin_shade = (0.45 + 0.55 * lum).clamp(0.35, 1.15);
+                                                        let target_r = (sp_r * tint_r * skin_shade).clamp(0.0, 1.0);
+                                                        let target_g = (sp_g * tint_g * skin_shade).clamp(0.0, 1.0);
+                                                        let target_b = (sp_b * tint_b * skin_shade).clamp(0.0, 1.0);
+
+                                                        r = r * (1.0 - eff_alpha) + target_r * eff_alpha;
+                                                        g = g * (1.0 - eff_alpha) + target_g * eff_alpha;
+                                                        b = b * (1.0 - eff_alpha) + target_b * eff_alpha;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 // 1. Interior de la fisura palpebral analítica 1080p (Esclera, Sprite de Pupilente y Catchlight)
                                 if eye_sx >= eye.left_x && eye_sx <= eye.right_x {
                                     let y_top_raw = sample_lid_y(&eye.upper_pts, eye_sx);

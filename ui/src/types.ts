@@ -77,6 +77,8 @@ export interface EffectState {
   lipstick: number;
   lipstickColor?: string;
   eyeshadow: number;
+  eyeshadowColor?: string;
+  eyeshadowStyle?: string;
   contour: number;
 
   // Background
@@ -129,6 +131,8 @@ export interface BaseAppearanceState {
   lipstick: number;
   lipstickColor?: string;
   eyeshadow: number;
+  eyeshadowColor?: string;
+  eyeshadowStyle?: string;
   contour: number;
   irisLighting?: number;
   irisColor?: string;

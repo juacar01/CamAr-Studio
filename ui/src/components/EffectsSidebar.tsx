@@ -68,6 +68,24 @@ const LIPSTICK_COLORS = [
   { id: 'wine_burgundy', label: 'Vino Borgoña', color: '#7a1c38' },
 ];
 
+const EYESHADOW_COLORS = [
+  { id: 'none', label: 'Sin sombra', color: 'transparent', isNone: true },
+  { id: 'bronze', label: 'Bronce Cálido', color: '#b8734d' },
+  { id: 'rose', label: 'Rosa Dorado', color: '#d1607a' },
+  { id: 'peach', label: 'Melocotón Glow', color: '#e0856b' },
+  { id: 'plum', label: 'Ciruela Ahumada', color: '#8c3861' },
+  { id: 'smoky_black', label: 'Negro Ahumado', color: '#2e2e33' },
+  { id: 'gold', label: 'Oro Metálico', color: '#d9ad52' },
+  { id: 'champagne', label: 'Champagne Shimmer', color: '#ebd1b8' },
+];
+
+const EYESHADOW_STYLES = [
+  { id: 'natural_nude', label: 'Natural Nude', desc: 'Difuminado suave' },
+  { id: 'smoky_glam', label: 'Smoky Glam', desc: 'Ahumado con profundidad' },
+  { id: 'cat_wing', label: 'Cat Wing', desc: 'Alargado felino hacia sien' },
+  { id: 'sunset_glow', label: 'Sunset Glow', desc: 'Halo luminoso central' },
+];
+
 const DEFAULT_PRESETS: MakeupPresetItem[] = [
   { id: 'charm', name: 'Charm', category: 'estilo_ins', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80', is_favorite: true },
   { id: 'sakura_light', name: 'Sakura light', category: 'estilo_ins', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&auto=format&fit=crop&q=80', is_favorite: true },
@@ -166,6 +184,8 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
     lipstick: 0,
     lipstickColor: 'rose_natural',
     eyeshadow: 0,
+    eyeshadowColor: 'bronze',
+    eyeshadowStyle: 'natural_nude',
     contour: 0,
     irisLighting: 0,
     irisColor: 'none',
@@ -907,27 +927,109 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
                         />
                       </div>
 
-                      {/* 1.8 Sombra de Ojos */}
-                      <div className="space-y-1.5">
+                      {/* 1.8 Sombra de Ojos (Sprite Deformable + Paleta + Estilos) */}
+                      <div className="space-y-3 pt-2 border-t border-neutral-800/60">
                         <div className="flex items-center justify-between">
                           <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                              <circle cx="12" cy="12" r="3" />
-                              <path d="M5 8c2-2 4-3 7-3s5 1 7 3" />
-                            </svg>
-                            <span>Sombra de ojos</span>
+                            <Palette className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Sombra de ojos (Sprite)</span>
                           </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.eyeshadow}</span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                            {EYESHADOW_STYLES.find((s) => s.id === (baseAppearance.eyeshadowStyle || 'natural_nude'))?.label || 'Natural'}
+                          </span>
                         </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.eyeshadow}
-                          onChange={(e) => updateBaseAppearance({ eyeshadow: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                        />
+
+                        {/* 1.8.1 Selector de Estilo de Sombra */}
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {EYESHADOW_STYLES.map((style) => {
+                            const isSelected = (baseAppearance.eyeshadowStyle || 'natural_nude') === style.id;
+                            return (
+                              <button
+                                key={style.id}
+                                onClick={() =>
+                                  updateBaseAppearance({
+                                    eyeshadowStyle: style.id,
+                                    eyeshadow: (baseAppearance.eyeshadow || 0) === 0 ? 55 : baseAppearance.eyeshadow,
+                                    eyeshadowColor: (baseAppearance.eyeshadowColor || 'none') === 'none' ? 'bronze' : baseAppearance.eyeshadowColor,
+                                  })
+                                }
+                                className={`px-2.5 py-1.5 rounded-lg border text-left transition-all ${
+                                  isSelected
+                                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-200 font-semibold'
+                                    : 'bg-[#1e1e22]/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                                }`}
+                              >
+                                <div className="text-[11px] font-medium leading-none mb-0.5">{style.label}</div>
+                                <div className="text-[9px] text-neutral-500 truncate leading-tight">{style.desc}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* 1.8.2 Selector de Color de Sombra */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-neutral-400">Tono de pigmento</span>
+                            <span className="text-[11px] text-neutral-300">
+                              {EYESHADOW_COLORS.find((c) => c.id === (baseAppearance.eyeshadowColor || 'bronze'))?.label || 'Bronce'}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2 overflow-x-auto py-1 no-scrollbar">
+                            {EYESHADOW_COLORS.map((tone) => {
+                              const currentColor =
+                                (baseAppearance.eyeshadow || 0) === 0 && baseAppearance.eyeshadowColor === 'none'
+                                  ? 'none'
+                                  : (baseAppearance.eyeshadowColor || 'bronze');
+                              const isSelected = currentColor === tone.id;
+                              if (tone.isNone) {
+                                return (
+                                  <button
+                                    key={tone.id}
+                                    onClick={() => updateBaseAppearance({ eyeshadowColor: 'none', eyeshadow: 0 })}
+                                    className={`w-7 h-7 rounded-full border border-neutral-600 shrink-0 flex items-center justify-center transition-all ${
+                                      isSelected ? 'ring-2 ring-amber-400 scale-110 bg-neutral-800' : 'opacity-70 hover:opacity-100'
+                                    }`}
+                                    title="Sin sombra"
+                                  >
+                                    <span className="text-xs text-neutral-400">⊘</span>
+                                  </button>
+                                );
+                              }
+                              return (
+                                <button
+                                  key={tone.id}
+                                  onClick={() =>
+                                    updateBaseAppearance({
+                                      eyeshadowColor: tone.id,
+                                      eyeshadow: (baseAppearance.eyeshadow || 0) === 0 ? 55 : baseAppearance.eyeshadow,
+                                    })
+                                  }
+                                  style={{ backgroundColor: tone.color }}
+                                  className={`w-7 h-7 rounded-full shrink-0 transition-transform ${
+                                    isSelected ? 'ring-2 ring-amber-400 scale-110 shadow-lg' : 'opacity-85 hover:opacity-100'
+                                  }`}
+                                  title={tone.label}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 1.8.3 Intensidad de Sombra (Alpha) */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-neutral-400">Intensidad / Opacidad</span>
+                            <span className="font-mono text-amber-300">{baseAppearance.eyeshadow || 0}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={baseAppearance.eyeshadow || 0}
+                            onChange={(e) => updateBaseAppearance({ eyeshadow: Number(e.target.value) })}
+                            className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-amber-400"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}

@@ -170,6 +170,8 @@ impl IpcServer {
                             if let Some(ls) = v["lipstick"].as_f64() { cfg.lipstick = ls as f32; }
                             if let Some(lc) = v["lipstickColor"].as_str() { cfg.lipstick_color = lc.to_string(); }
                             if let Some(es) = v["eyeshadow"].as_f64() { cfg.eyeshadow = es as f32; }
+                            if let Some(ec) = v["eyeshadowColor"].as_str() { cfg.eyeshadow_color = ec.to_string(); }
+                            if let Some(est) = v["eyeshadowStyle"].as_str() { cfg.eyeshadow_style = est.to_string(); }
                             if let Some(ct) = v["contour"].as_f64() { cfg.contour = ct as f32; }
 
                             if let Some(bg) = v["bgMode"].as_i64() { cfg.bg_mode = BackgroundMode::from(bg as i32); }

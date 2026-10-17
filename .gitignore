@@ -35,6 +35,7 @@ ui-winui/obj/
 # Distribution and installers
 dist/
 dist-installer/
+release/
 _backups/
 
 # IDE
