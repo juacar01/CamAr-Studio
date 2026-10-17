@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Cpu, Zap, Sparkles, Check, Server, ShieldCheck, Activity } from 'lucide-react';
 import type { EffectState, EngineTelemetry } from '../types';
 
@@ -17,9 +17,16 @@ export const HardwareSettingsModal: React.FC<HardwareSettingsModalProps> = ({
   telemetry,
   onChange,
 }) => {
-  const [selectedVideo, setSelectedVideo] = useState<string>(effects.videoBackend || 'cpu');
-  const [selectedAi, setSelectedAi] = useState<string>(effects.aiBackend || 'cpu');
+  const [selectedVideo, setSelectedVideo] = useState<string>(effects.videoBackend || 'gpu_d3d12');
+  const [selectedAi, setSelectedAi] = useState<string>(effects.aiBackend || 'npu');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedVideo(effects.videoBackend || 'gpu_d3d12');
+      setSelectedAi(effects.aiBackend || 'npu');
+    }
+  }, [isOpen, effects.videoBackend, effects.aiBackend]);
 
   if (!isOpen) return null;
 
@@ -33,7 +40,7 @@ export const HardwareSettingsModal: React.FC<HardwareSettingsModalProps> = ({
     setTimeout(() => {
       setSaveSuccess(false);
       onClose();
-    }, 1200);
+    }, 700);
   };
 
   const hardware = telemetry.hardware;

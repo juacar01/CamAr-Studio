@@ -1,0 +1,43 @@
+[package]
+name = "camar-engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.40", features = ["full"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+rayon = "1.10"
+tao = "0.37"
+wry = "0.57"
+include_dir = "0.7"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_Security"
+] }
+nokhwa = { version = "0.10.11", features = ["input-msmf"] }
+cpal = "0.18.2"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+chrono = "0.4"
+
+[lib]
+name = "camar_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "camar-engine"
+path = "src/main.rs"
+
+[[bin]]
+name = "test_image"
+path = "src/bin/test_image.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StudioHeader } from './components/StudioHeader';
 import { VideoCanvas } from './components/VideoCanvas';
 import { EffectsSidebar } from './components/EffectsSidebar';
@@ -9,7 +9,7 @@ import type { EffectState, EngineTelemetry, CameraDeviceInfo, AudioDeviceInfo } 
 import { engineClient } from './services/wsClient';
 
 const DEFAULT_EFFECTS: EffectState = {
-  selectedCameraId: 'synthetic',
+  selectedCameraId: '',
   selectedWidth: 1920,
   selectedHeight: 1080,
   selectedFps: 60,
@@ -36,15 +36,23 @@ const DEFAULT_EFFECTS: EffectState = {
 
   beautyEnabled: true,
   skinSmoothing: 0.45,
+  skinWhitening: 0.0,
   faceSlim: 0.0,
   eyeEnlarge: 0.0,
+  eyeRound: 0.0,
   eyeBrighten: 0.0,
+  eyeCatchlight: 0.0,
+  eyelashes: 0.0,
+  irisLighting: 0.0,
+  irisColor: 'none',
   browLift: 0.0,
   noseSlim: 0.0,
   lipPlump: 0.0,
   foundationTone: 'none',
+  foundationIntensity: 0.40,
   teethWhitening: 0.0,
   lipstick: 0.0,
+  lipstickColor: 'rose_natural',
   eyeshadow: 0.0,
   contour: 0.0,
   bgMode: 0,
@@ -56,8 +64,8 @@ const DEFAULT_EFFECTS: EffectState = {
   drawFaceBox: false,
   drawFaceLandmarks: false,
 
-  videoBackend: 'cpu',
-  aiBackend: 'cpu',
+  videoBackend: 'gpu_d3d12',
+  aiBackend: 'npu',
 
   filterLut: 'none',
   filterIntensity: 0.80,
@@ -93,6 +101,7 @@ const DEFAULT_TELEMETRY: EngineTelemetry = {
 
 export const App: React.FC = () => {
   const [effects, setEffects] = useState<EffectState>(getInitialEffects);
+  const effectsRef = useRef<EffectState>(DEFAULT_EFFECTS);
   const [telemetry, setTelemetry] = useState<EngineTelemetry>(DEFAULT_TELEMETRY);
   const [connected, setConnected] = useState<boolean>(false);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState<boolean>(false);
@@ -102,6 +111,7 @@ export const App: React.FC = () => {
   // Dispositivos detectados dinámicamente en tiempo real (Cero quemado)
   const [cameras, setCameras] = useState<CameraDeviceInfo[]>([]);
   const [microphones, setMicrophones] = useState<AudioDeviceInfo[]>([]);
+  const latestCamerasRef = useRef<CameraDeviceInfo[]>([]);
 
   useEffect(() => {
     engineClient.connect(
@@ -111,20 +121,24 @@ export const App: React.FC = () => {
       (devices) => {
         setCameras(devices.cameras);
         setMicrophones(devices.microphones);
+        latestCamerasRef.current = devices.cameras;
 
-        // Comprobar si el usuario ya tenía una cámara física guardada previamente en presets
-        const currentSaved = getInitialEffects();
-        const hasSavedPhysicalCamera =
-          currentSaved.selectedCameraId &&
-          currentSaved.selectedCameraId !== 'synthetic' &&
-          currentSaved.selectedCameraId !== 'auto';
+        const currentSaved = effectsRef.current;
+        const targetCamId = currentSaved.selectedCameraId;
 
-        const matchedCam = hasSavedPhysicalCamera
-          ? devices.cameras.find((c) => c.id === currentSaved.selectedCameraId)
+        // Buscar coincidencia si había cámara guardada
+        let matchedCam = targetCamId
+          ? devices.cameras.find((c) => c.id === targetCamId)
           : null;
 
+        // Si no había cámara seleccionada aún, preferir la primera cámara física detectada (en lugar del simulador)
+        if (!matchedCam && (!targetCamId || targetCamId === 'auto')) {
+          matchedCam = devices.cameras.find((c) => c.id !== 'synthetic') || devices.cameras[0];
+        }
+
+        let nextEffects = { ...currentSaved };
+
         if (matchedCam && matchedCam.formats.length > 0) {
-          // El usuario ya había seleccionado esta cámara en una sesión previa -> Restaurarla
           const matchedFormat =
             matchedCam.formats.find(
               (f) =>
@@ -132,26 +146,29 @@ export const App: React.FC = () => {
                 f.height === currentSaved.selectedHeight &&
                 f.fps === currentSaved.selectedFps &&
                 f.format === currentSaved.selectedFormat
-            ) || matchedCam.formats[0];
+            ) ||
+            matchedCam.formats.find(
+              (f) =>
+                f.width === currentSaved.selectedWidth &&
+                f.height === currentSaved.selectedHeight &&
+                f.fps === currentSaved.selectedFps
+            ) ||
+            matchedCam.formats.find(
+              (f) =>
+                f.width === currentSaved.selectedWidth &&
+                f.height === currentSaved.selectedHeight
+            ) ||
+            matchedCam.formats[0];
 
-          setEffects((prev) => ({
-            ...prev,
+          nextEffects = {
+            ...nextEffects,
             selectedCameraId: matchedCam.id,
             selectedWidth: matchedFormat.width,
             selectedHeight: matchedFormat.height,
             selectedFps: matchedFormat.fps,
             selectedFormat: matchedFormat.format,
-          }));
-
-          engineClient.selectCamera(
-            matchedCam.id,
-            matchedFormat.width,
-            matchedFormat.height,
-            matchedFormat.fps,
-            matchedFormat.format
-          );
-        } else {
-          // POR DEFECTO: Si previamente no ha seleccionado nada, usar el Dummy Simulator del inicio
+          };
+        } else if (targetCamId === 'synthetic' || !matchedCam) {
           const syntheticCam = devices.cameras.find((c) => c.id === 'synthetic');
           const simFormat = syntheticCam?.formats[0] || {
             width: 1920,
@@ -160,101 +177,111 @@ export const App: React.FC = () => {
             format: 'NV12',
           };
 
-          setEffects((prev) => ({
-            ...prev,
+          nextEffects = {
+            ...nextEffects,
             selectedCameraId: 'synthetic',
-            selectedWidth: simFormat.width,
-            selectedHeight: simFormat.height,
-            selectedFps: simFormat.fps,
-            selectedFormat: simFormat.format,
-          }));
-
-          engineClient.selectCamera(
-            'synthetic',
-            simFormat.width,
-            simFormat.height,
-            simFormat.fps,
-            simFormat.format
-          );
+            selectedWidth: currentSaved.selectedWidth || simFormat.width,
+            selectedHeight: currentSaved.selectedHeight || simFormat.height,
+            selectedFps: currentSaved.selectedFps || simFormat.fps,
+            selectedFormat: currentSaved.selectedFormat || simFormat.format,
+          };
         }
 
         if (devices.microphones.length > 0) {
           const defaultMic = devices.microphones.find((m) => m.is_default) || devices.microphones[0];
-          setEffects((prev) => ({
-            ...prev,
-            selectedAudioId: prev.selectedAudioId || defaultMic.id,
-          }));
+          nextEffects = {
+            ...nextEffects,
+            selectedAudioId: nextEffects.selectedAudioId || defaultMic.id,
+          };
         }
+
+        effectsRef.current = nextEffects;
+        setEffects(nextEffects);
       },
       (isConnected) => {
         setConnected(isConnected);
       },
       (savedPreset) => {
         if (savedPreset) {
-          setEffects((prev) => {
-            const merged = {
-              ...prev,
-              selectedCameraId: savedPreset.selected_camera_id || prev.selectedCameraId,
-              selectedWidth: savedPreset.selected_width || prev.selectedWidth,
-              selectedHeight: savedPreset.selected_height || prev.selectedHeight,
-              selectedFps: savedPreset.selected_fps || prev.selectedFps,
-              selectedFormat: savedPreset.selected_format || prev.selectedFormat,
-              colorRange: savedPreset.color_range === 'Limited' ? 1 : 0,
-              colorSpace: savedPreset.color_space === 'SRgb' ? 1 : savedPreset.color_space === 'Rec601' ? 2 : savedPreset.color_space === 'Rec2020' ? 3 : 0,
-              saturation: savedPreset.saturation ?? prev.saturation,
-              contrast: savedPreset.contrast ?? prev.contrast,
-              sharpness: savedPreset.sharpness ?? prev.sharpness,
-              hue: savedPreset.hue ?? prev.hue,
-              whiteBalance: savedPreset.white_balance ?? prev.whiteBalance,
-              exposure: (savedPreset.exposure !== undefined && Math.abs(savedPreset.exposure) <= 2.0) ? savedPreset.exposure : 0.0,
-              brightness: (savedPreset.brightness !== undefined && Math.abs(savedPreset.brightness) <= 1.0) ? savedPreset.brightness : 0.0,
-              aiLightingEnabled: savedPreset.ai_lighting_enabled ?? prev.aiLightingEnabled,
-              aiDenoiseEnabled: savedPreset.ai_denoise_enabled ?? prev.aiDenoiseEnabled,
-              aiAutoTuneEnabled: savedPreset.ai_auto_tune_enabled ?? prev.aiAutoTuneEnabled,
-              videoBackend: savedPreset.video_backend || prev.videoBackend,
-              aiBackend: savedPreset.ai_backend || prev.aiBackend,
-              selectedAudioId: savedPreset.selected_audio_id || prev.selectedAudioId,
-              beautyEnabled: savedPreset.beauty_enabled ?? prev.beautyEnabled,
-              skinSmoothing: savedPreset.skin_smoothing ?? prev.skinSmoothing,
-              faceSlim: savedPreset.face_slim ?? prev.faceSlim,
-              eyeEnlarge: savedPreset.eye_enlarge ?? prev.eyeEnlarge,
-              browLift: savedPreset.brow_lift ?? prev.browLift,
-              noseSlim: savedPreset.nose_slim ?? prev.noseSlim,
-              lipPlump: savedPreset.lip_plump ?? prev.lipPlump,
-              foundationTone: savedPreset.foundation_tone || prev.foundationTone,
-              teethWhitening: savedPreset.teeth_whitening ?? prev.teethWhitening,
-              lipstick: savedPreset.lipstick ?? prev.lipstick,
-              eyeshadow: savedPreset.eyeshadow ?? prev.eyeshadow,
-              contour: savedPreset.contour ?? prev.contour,
-              filterLut: savedPreset.filter_lut || prev.filterLut,
-              filterIntensity: savedPreset.filter_intensity ?? prev.filterIntensity,
-              audioVolume: savedPreset.audio_volume ?? prev.audioVolume,
-              audioMuted: savedPreset.audio_muted ?? prev.audioMuted,
-              favoritePresets: savedPreset.favorite_presets || prev.favoritePresets,
-              activePresetId: savedPreset.active_preset_id || prev.activePresetId,
-              makeupIntensity: savedPreset.makeup_intensity ?? prev.makeupIntensity,
-              baseAppearance: savedPreset.base_appearance ? {
-                skinSmoothing: savedPreset.base_appearance.skin_smoothing,
-                skinWhitening: savedPreset.base_appearance.skin_whitening,
-                faceSlim: savedPreset.base_appearance.face_slim,
-                eyeEnlarge: savedPreset.base_appearance.eye_enlarge,
-                eyeRound: savedPreset.base_appearance.eye_round,
-                eyeBrighten: savedPreset.base_appearance.eye_brighten,
-                browLift: savedPreset.base_appearance.brow_lift,
-                noseSlim: savedPreset.base_appearance.nose_slim,
-                lipPlump: savedPreset.base_appearance.lip_plump,
-                foundationTone: savedPreset.base_appearance.foundation_tone,
-                foundationIntensity: savedPreset.base_appearance.foundation_intensity,
-                teethWhitening: savedPreset.base_appearance.teeth_whitening,
-                lipstick: savedPreset.base_appearance.lipstick,
-                eyeshadow: savedPreset.base_appearance.eyeshadow,
-                contour: savedPreset.base_appearance.contour,
-                irisLighting: savedPreset.base_appearance.iris_lighting,
-                irisColor: savedPreset.base_appearance.iris_color,
-              } : prev.baseAppearance,
-            };
-            return merged;
-          });
+          const prev = effectsRef.current;
+          const ba = savedPreset.base_appearance;
+          const merged: EffectState = {
+            ...prev,
+            selectedCameraId: savedPreset.selected_camera_id || prev.selectedCameraId,
+            selectedWidth: savedPreset.selected_width || prev.selectedWidth,
+            selectedHeight: savedPreset.selected_height || prev.selectedHeight,
+            selectedFps: savedPreset.selected_fps || prev.selectedFps,
+            selectedFormat: savedPreset.selected_format || prev.selectedFormat,
+            colorRange: savedPreset.color_range === 'Limited' ? 1 : 0,
+            colorSpace: savedPreset.color_space === 'SRgb' ? 1 : savedPreset.color_space === 'Rec601' ? 2 : savedPreset.color_space === 'Rec2020' ? 3 : 0,
+            saturation: savedPreset.saturation ?? prev.saturation,
+            contrast: savedPreset.contrast ?? prev.contrast,
+            sharpness: savedPreset.sharpness ?? prev.sharpness,
+            hue: savedPreset.hue ?? prev.hue,
+            whiteBalance: savedPreset.white_balance ?? prev.whiteBalance,
+            exposure: (savedPreset.exposure !== undefined && Math.abs(savedPreset.exposure) <= 2.0) ? savedPreset.exposure : 0.0,
+            brightness: (savedPreset.brightness !== undefined && Math.abs(savedPreset.brightness) <= 1.0) ? savedPreset.brightness : 0.0,
+            aiLightingEnabled: savedPreset.ai_lighting_enabled ?? prev.aiLightingEnabled,
+            aiDenoiseEnabled: savedPreset.ai_denoise_enabled ?? prev.aiDenoiseEnabled,
+            aiAutoTuneEnabled: savedPreset.ai_auto_tune_enabled ?? prev.aiAutoTuneEnabled,
+            videoBackend: savedPreset.video_backend || prev.videoBackend,
+            aiBackend: savedPreset.ai_backend || prev.aiBackend,
+            selectedAudioId: savedPreset.selected_audio_id || prev.selectedAudioId,
+            beautyEnabled: savedPreset.beauty_enabled ?? prev.beautyEnabled,
+            skinSmoothing: savedPreset.skin_smoothing ?? prev.skinSmoothing,
+            skinWhitening: savedPreset.skin_whitening ?? prev.skinWhitening,
+            faceSlim: savedPreset.face_slim ?? prev.faceSlim,
+            eyeEnlarge: savedPreset.eye_enlarge ?? prev.eyeEnlarge,
+            eyeRound: savedPreset.eye_round ?? prev.eyeRound,
+            eyeBrighten: savedPreset.eye_brighten ?? prev.eyeBrighten,
+            eyeCatchlight: savedPreset.eye_catchlight ?? prev.eyeCatchlight,
+            eyelashes: savedPreset.eyelashes ?? prev.eyelashes,
+            irisLighting: savedPreset.iris_lighting ?? prev.irisLighting,
+            irisColor: savedPreset.iris_color || prev.irisColor,
+            browLift: savedPreset.brow_lift ?? prev.browLift,
+            noseSlim: savedPreset.nose_slim ?? prev.noseSlim,
+            lipPlump: savedPreset.lip_plump ?? prev.lipPlump,
+            foundationTone: savedPreset.foundation_tone || prev.foundationTone,
+            foundationIntensity: savedPreset.foundation_intensity ?? prev.foundationIntensity,
+            teethWhitening: savedPreset.teeth_whitening ?? prev.teethWhitening,
+            lipstick: savedPreset.lipstick ?? prev.lipstick,
+            lipstickColor: savedPreset.lipstick_color || prev.lipstickColor || 'rose_natural',
+            eyeshadow: savedPreset.eyeshadow ?? prev.eyeshadow,
+            contour: savedPreset.contour ?? prev.contour,
+            filterLut: savedPreset.filter_lut || prev.filterLut,
+            filterIntensity: savedPreset.filter_intensity ?? prev.filterIntensity,
+            audioVolume: savedPreset.audio_volume ?? prev.audioVolume,
+            audioMuted: savedPreset.audio_muted ?? prev.audioMuted,
+            favoritePresets: savedPreset.favorite_presets || prev.favoritePresets,
+            activePresetId: savedPreset.active_preset_id || prev.activePresetId,
+            makeupIntensity: savedPreset.makeup_intensity ?? prev.makeupIntensity,
+            customPresets: savedPreset.custom_presets || prev.customPresets,
+            baseAppearance: {
+              beautyEnabled: savedPreset.beauty_enabled ?? true,
+              skinSmoothing: ba?.skin_smoothing ?? Math.round((savedPreset.skin_smoothing ?? 0.45) * 100),
+              skinWhitening: ba?.skin_whitening ?? Math.round((savedPreset.skin_whitening ?? 0) * 100),
+              faceSlim: ba?.face_slim ?? Math.round((savedPreset.face_slim ?? 0) * 100),
+              eyeEnlarge: ba?.eye_enlarge ?? Math.round((savedPreset.eye_enlarge ?? 0) * 100),
+              eyeRound: ba?.eye_round ?? Math.round((savedPreset.eye_round ?? 0) * 100),
+              eyeBrighten: ba?.eye_brighten ?? Math.round((savedPreset.eye_brighten ?? 0) * 100),
+              eyeCatchlight: ba?.eye_catchlight ?? Math.round((savedPreset.eye_catchlight ?? 0) * 100),
+              eyelashes: ba?.eyelashes ?? Math.round((savedPreset.eyelashes ?? 0) * 100),
+              browLift: ba?.brow_lift ?? Math.round((savedPreset.brow_lift ?? 0) * 100),
+              noseSlim: ba?.nose_slim ?? Math.round((savedPreset.nose_slim ?? 0) * 50),
+              lipPlump: ba?.lip_plump ?? Math.round((savedPreset.lip_plump ?? 0) * 100),
+              foundationTone: ba?.foundation_tone || savedPreset.foundation_tone || 'none',
+              foundationIntensity: ba?.foundation_intensity ?? Math.round((savedPreset.foundation_intensity ?? 0.40) * 100),
+              teethWhitening: ba?.teeth_whitening ?? Math.round((savedPreset.teeth_whitening ?? 0) * 100),
+              lipstick: ba?.lipstick ?? Math.round((savedPreset.lipstick ?? 0) * 100),
+              lipstickColor: ba?.lipstick_color || savedPreset.lipstick_color || 'rose_natural',
+              eyeshadow: ba?.eyeshadow ?? Math.round((savedPreset.eyeshadow ?? 0) * 100),
+              contour: ba?.contour ?? Math.round((savedPreset.contour ?? 0) * 100),
+              irisLighting: ba?.iris_lighting ?? Math.round((savedPreset.iris_lighting ?? 0) * 100),
+              irisColor: ba?.iris_color || savedPreset.iris_color || 'none',
+            },
+          };
+          effectsRef.current = merged;
+          setEffects(merged);
         }
       }
     );
@@ -265,6 +292,7 @@ export const App: React.FC = () => {
   }, []);
 
   const handleEffectChange = (updated: EffectState) => {
+    effectsRef.current = updated;
     setEffects(updated);
     engineClient.sendConfigUpdate(updated);
   };
@@ -307,6 +335,7 @@ export const App: React.FC = () => {
       selectedFps: fps,
       selectedFormat: fmt,
     };
+    effectsRef.current = updated;
     setEffects(updated);
     engineClient.selectCamera(camId, w, h, fps, fmt);
     engineClient.sendConfigUpdate(updated);
@@ -314,12 +343,14 @@ export const App: React.FC = () => {
 
   const handleSelectAudio = (audioId: string) => {
     const updated = { ...effects, selectedAudioId: audioId };
+    effectsRef.current = updated;
     setEffects(updated);
     engineClient.selectAudio(audioId);
   };
 
   const handleToggleMute = () => {
     const updated = { ...effects, audioMuted: !effects.audioMuted };
+    effectsRef.current = updated;
     setEffects(updated);
     engineClient.toggleMute(updated.audioMuted);
   };
@@ -329,6 +360,7 @@ export const App: React.FC = () => {
   };
 
   const handleReset = () => {
+    effectsRef.current = DEFAULT_EFFECTS;
     setEffects(DEFAULT_EFFECTS);
     engineClient.sendConfigUpdate(DEFAULT_EFFECTS);
   };

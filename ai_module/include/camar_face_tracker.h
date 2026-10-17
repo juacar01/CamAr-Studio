@@ -57,6 +57,10 @@ CAMAR_AI_API void snapjm_face_tracker_post_frame(snapjm_face_tracker_t *tracker,
                                                  const uint8_t *rgba_data,
                                                  int width, int height, int linesize);
 
+CAMAR_AI_API void snapjm_face_tracker_track_face_sync(snapjm_face_tracker_t *tracker,
+                                                      const uint8_t *rgba_data,
+                                                      int width, int height, int linesize);
+
 CAMAR_AI_API bool snapjm_face_tracker_get_mask(snapjm_face_tracker_t *tracker,
                                                uint8_t *out_rgba_mask,
                                                int target_width, int target_height,

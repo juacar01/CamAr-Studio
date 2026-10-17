@@ -75,6 +75,7 @@ export interface EffectState {
   foundationIntensity?: number;
   teethWhitening: number;
   lipstick: number;
+  lipstickColor?: string;
   eyeshadow: number;
   contour: number;
 
@@ -106,6 +107,7 @@ export interface EffectState {
   activePresetId?: string;
   makeupIntensity?: number;
   baseAppearance?: BaseAppearanceState;
+  customPresets?: Record<string, MakeupPresetConfig>;
 }
 
 export interface BaseAppearanceState {
@@ -125,6 +127,7 @@ export interface BaseAppearanceState {
   foundationIntensity?: number;
   teethWhitening: number;
   lipstick: number;
+  lipstickColor?: string;
   eyeshadow: number;
   contour: number;
   irisLighting?: number;

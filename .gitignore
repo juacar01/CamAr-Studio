@@ -4,7 +4,6 @@ engine-rs/target/
 Cargo.lock
 
 # Nested repositories and vendor deps
-engine-rs/
 deps/
 
 # Node / Web UI
