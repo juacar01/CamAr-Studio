@@ -112,7 +112,7 @@ fn run_multimedia_engine(
 
                 while let Ok((rgb_data, pw, ph)) = preview_rx.recv() {
                     jpeg_bytes.clear();
-                    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_bytes, 68);
+                    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_bytes, 62);
                     if let Ok(()) = encoder.encode(
                         &rgb_data,
                         pw,
@@ -140,7 +140,7 @@ fn run_multimedia_engine(
 
         let mut frame_interval = Duration::from_micros(33_333); // 30 FPS por defecto
         let mut last_preview_time = Instant::now();
-        let preview_interval = Duration::from_millis(33); // 30 FPS para Preview UI
+        let preview_interval = Duration::from_millis(16); // Hasta 60 FPS ultra-fluido para Preview UI
         let mut last_perf_log = Instant::now();
 
         loop {
@@ -242,7 +242,7 @@ fn run_multimedia_engine(
 
             if !current_cfg.preview_paused && video_tx.receiver_count() > 0 && should_send_preview {
                 last_preview_time = now_instant;
-                let scale_2x = width > 1920 || height > 1080;
+                let scale_2x = width >= 1280 || height >= 720;
                 let preview_w = if scale_2x { width / 2 } else { width };
                 let preview_h = if scale_2x { height / 2 } else { height };
                 let target_len = preview_w * preview_h * 3;
