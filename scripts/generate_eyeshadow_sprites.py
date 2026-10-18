@@ -13,21 +13,22 @@ def create_natural_nude():
     img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     pixels = img.load()
     for y in range(HEIGHT):
-        v = (HEIGHT - 1 - y) / (HEIGHT - 1) # 0 at bottom (lashline), 1 at top (brow)
+        v = (HEIGHT - 1 - y) / (HEIGHT - 1)
         for x in range(WIDTH):
-            u = x / (WIDTH - 1) # 0 at inner corner, 1 at outer corner
+            u = x / (WIDTH - 1)
             
-            # Vertical blend: strong at lashline, soft decay towards brow
-            v_alpha = math.exp(-((v - 0.12) ** 2) / 0.18) if v >= 0.05 else smoothstep(0.0, 0.05, v)
-            if v > 0.85:
-                v_alpha *= smoothstep(1.0, 0.85, v)
-            
-            # Horizontal blend: softer on inner, gentle build-up on outer
-            u_alpha = smoothstep(0.02, 0.25, u) * smoothstep(1.0, 0.80, u)
-            
-            alpha = max(0.0, min(1.0, v_alpha * u_alpha * 0.95))
-            
-            # Grayscale intensity for tinting (luminous core on center)
+            # Smooth soft gradient across full mobile lid (v from 0.0 to 0.35)
+            if v <= 0.35:
+                lid = 0.88 + 0.12 * (1.0 - v / 0.35)
+            else:
+                lid = math.exp(-((v - 0.35) ** 1.6) / 0.14)
+                
+            u_alpha = smoothstep(0.02, 0.20, u) * smoothstep(1.0, 0.85, u)
+            total_alpha = lid * u_alpha
+            if v > 0.88:
+                total_alpha *= smoothstep(1.0, 0.88, v)
+                
+            alpha = max(0.0, min(1.0, total_alpha * 0.96))
             center_luma = 0.85 + 0.15 * math.exp(-((u - 0.5) ** 2) / 0.08)
             val = int(255 * center_luma)
             a = int(alpha * 255)
@@ -42,20 +43,20 @@ def create_smoky_glam():
         for x in range(WIDTH):
             u = x / (WIDTH - 1)
             
-            # Lash line density + deep outer V
-            lash_v = math.exp(-(v ** 2) / 0.08)
-            outer_v = math.exp(-((u - 0.85)**2) / 0.09) * math.exp(-((v - 0.35)**2) / 0.12)
-            
-            v_alpha = lash_v * 0.75 + outer_v * 0.85
-            if v < 0.03:
-                v_alpha *= smoothstep(0.0, 0.03, v)
-            if v > 0.88:
-                v_alpha *= smoothstep(1.0, 0.88, v)
+            # Full dense mobile lid coverage with deep outer V
+            if v <= 0.40:
+                lid = 0.92 + 0.08 * (1.0 - v / 0.40)
+            else:
+                lid = math.exp(-((v - 0.40) ** 1.6) / 0.12)
                 
-            u_alpha = smoothstep(0.04, 0.22, u)
-            alpha = max(0.0, min(1.0, (v_alpha * u_alpha) * 0.98))
+            outer_v = math.exp(-((u - 0.85)**2) / 0.10) * math.exp(-((v - 0.35)**2) / 0.14)
             
-            # Outer has deeper smoke
+            u_alpha = smoothstep(0.02, 0.18, u)
+            total_alpha = max(lid * 0.90, outer_v * 0.95) * u_alpha
+            if v > 0.90:
+                total_alpha *= smoothstep(1.0, 0.90, v)
+                
+            alpha = max(0.0, min(1.0, total_alpha * 0.98))
             val = int(255 * (0.95 - 0.25 * u))
             a = int(alpha * 255)
             pixels[x, y] = (val, val, val, a)
@@ -69,21 +70,22 @@ def create_cat_wing():
         for x in range(WIDTH):
             u = x / (WIDTH - 1)
             
-            # Lash line gradient
-            lash = math.exp(-((v - 0.08)**2) / 0.06) * smoothstep(0.05, 0.4, u)
-            
-            # Wing tilted upward at outer edge: centerline v_wing = 0.18 + (u - 0.75) * 0.8
-            wing_center_v = 0.12 + max(0.0, (u - 0.65)) * 0.95
-            wing_dist = abs(v - wing_center_v)
-            wing = math.exp(-(wing_dist ** 2) / 0.04) * smoothstep(0.65, 0.92, u) if u >= 0.65 else 0.0
-            
-            total_alpha = max(lash * 0.75, wing * 0.95)
-            if v < 0.02:
-                total_alpha *= smoothstep(0.0, 0.02, v)
-            if v > 0.85:
-                total_alpha *= smoothstep(1.0, 0.85, v)
+            # Full mobile lid base
+            if v <= 0.35:
+                lid = 0.88 + 0.12 * (1.0 - v / 0.35)
+            else:
+                lid = math.exp(-((v - 0.35) ** 1.8) / 0.10)
                 
-            alpha = max(0.0, min(1.0, total_alpha * smoothstep(0.05, 0.25, u)))
+            # Wing tilted upward at outer edge
+            wing_center_v = 0.12 + max(0.0, (u - 0.55)) * 1.05
+            wing_dist = abs(v - wing_center_v)
+            wing = math.exp(-(wing_dist ** 2) / 0.05) * smoothstep(0.55, 0.95, u) if u >= 0.55 else 0.0
+            
+            total_alpha = max(lid * 0.85, wing * 0.98) * smoothstep(0.02, 0.20, u)
+            if v > 0.88:
+                total_alpha *= smoothstep(1.0, 0.88, v)
+                
+            alpha = max(0.0, min(1.0, total_alpha))
             val = 255
             a = int(alpha * 255)
             pixels[x, y] = (val, val, val, a)
@@ -97,19 +99,101 @@ def create_sunset_glow():
         for x in range(WIDTH):
             u = x / (WIDTH - 1)
             
-            # Halo eye: bright and luminous in center, soft on edges
-            halo_center = math.exp(-((u - 0.50)**2) / 0.06) * math.exp(-((v - 0.25)**2) / 0.08)
-            surround = math.exp(-((v - 0.20)**2) / 0.15) * smoothstep(0.08, 0.35, u) * smoothstep(0.95, 0.75, u)
+            # Halo eye: full lid coverage with luminous center highlight
+            if v <= 0.40:
+                lid = 0.88 + 0.10 * (1.0 - v / 0.40)
+            else:
+                lid = math.exp(-((v - 0.40) ** 1.6) / 0.12)
+                
+            halo_center = math.exp(-((u - 0.50)**2) / 0.07) * math.exp(-((v - 0.25)**2) / 0.09)
             
-            total_alpha = (halo_center * 0.90 + surround * 0.55)
-            if v < 0.03:
-                total_alpha *= smoothstep(0.0, 0.03, v)
-            if v > 0.85:
-                total_alpha *= smoothstep(1.0, 0.85, v)
+            total_alpha = max(lid * 0.85, halo_center * 0.95) * smoothstep(0.02, 0.18, u)
+            if v > 0.90:
+                total_alpha *= smoothstep(1.0, 0.90, v)
                 
             alpha = max(0.0, min(1.0, total_alpha))
-            # Halo center has bright highlight
             val = int(255 * (0.80 + 0.20 * math.exp(-((u - 0.50)**2) / 0.05)))
+            a = int(alpha * 255)
+            pixels[x, y] = (val, val, val, a)
+    return img
+
+def create_grunge_kohl():
+    img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    pixels = img.load()
+    for y in range(HEIGHT):
+        v = (HEIGHT - 1 - y) / (HEIGHT - 1)
+        for x in range(WIDTH):
+            u = x / (WIDTH - 1)
+            
+            # 360 Rocker Smokey: Full intense solid kohl on mobile lid + seamless brow diffusion
+            if v <= 0.45:
+                lid_base = 0.95 + 0.05 * (1.0 - v / 0.45)
+            else:
+                lid_base = math.exp(-((v - 0.45) ** 1.5) / 0.10)
+                
+            crease_smoke = math.exp(-((v - 0.40) ** 2) / 0.18) * 0.85
+            u_spread = smoothstep(0.01, 0.14, u) * smoothstep(1.0, 0.92, u)
+            
+            total_alpha = max(lid_base, crease_smoke) * u_spread
+            if v > 0.92:
+                total_alpha *= smoothstep(1.0, 0.92, v)
+                
+            alpha = max(0.0, min(1.0, total_alpha * 0.99))
+            val = int(255 * (0.90 - 0.20 * v))
+            a = int(alpha * 255)
+            pixels[x, y] = (val, val, val, a)
+    return img
+
+def create_foxy_glam():
+    img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    pixels = img.load()
+    for y in range(HEIGHT):
+        v = (HEIGHT - 1 - y) / (HEIGHT - 1)
+        for x in range(WIDTH):
+            u = x / (WIDTH - 1)
+            
+            # Full mobile lid coverage from lashline (v=0) to cut crease (v=0.45)
+            if v <= 0.42:
+                mobile_lid = 0.92 + 0.08 * (1.0 - v / 0.42)
+            else:
+                mobile_lid = math.exp(-((v - 0.42) ** 1.6) / 0.08)
+                
+            # Sharp outer wing lift starting from mid-eye (u >= 0.45)
+            wing_center_v = 0.16 + max(0.0, (u - 0.45)) * 1.05
+            wing = math.exp(-((v - wing_center_v) ** 2) / 0.05) * smoothstep(0.45, 0.92, u)
+            
+            u_spread = smoothstep(0.02, 0.20, u)
+            total_alpha = max(mobile_lid * 0.92, wing * 0.98) * u_spread
+            if v > 0.88:
+                total_alpha *= smoothstep(1.0, 0.88, v)
+                
+            alpha = max(0.0, min(1.0, total_alpha))
+            val = 255
+            a = int(alpha * 255)
+            pixels[x, y] = (val, val, val, a)
+    return img
+
+def create_glitter_pop():
+    img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    pixels = img.load()
+    for y in range(HEIGHT):
+        v = (HEIGHT - 1 - y) / (HEIGHT - 1)
+        for x in range(WIDTH):
+            u = x / (WIDTH - 1)
+            
+            # Festival sparkle density on mobile lid
+            base_wash = math.exp(-((v - 0.25) ** 2) / 0.16) * smoothstep(0.03, 0.25, u) * smoothstep(0.99, 0.82, u)
+            
+            # Pseudo-random micro-glitter stippling
+            noise = (math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1.0
+            sparkle = noise if noise > 0.55 else 0.35
+            
+            total_alpha = base_wash * (0.65 + 0.35 * sparkle)
+            if v > 0.88:
+                total_alpha *= smoothstep(1.0, 0.88, v)
+                
+            alpha = max(0.0, min(1.0, total_alpha * 0.98))
+            val = int(255 * (0.80 + 0.20 * sparkle))
             a = int(alpha * 255)
             pixels[x, y] = (val, val, val, a)
     return img
@@ -120,6 +204,9 @@ def main():
         "smoky_glam.png": create_smoky_glam,
         "cat_wing.png": create_cat_wing,
         "sunset_glow.png": create_sunset_glow,
+        "grunge_kohl.png": create_grunge_kohl,
+        "foxy_glam.png": create_foxy_glam,
+        "glitter_pop.png": create_glitter_pop,
     }
 
     target_dirs = [

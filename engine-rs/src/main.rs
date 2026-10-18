@@ -81,7 +81,11 @@ fn run_multimedia_engine(
         let mut width = 1920;
         let mut height = 1080;
         let mut capture = VideoCapture::new(width, height);
-        let mut ai_engine = AiEngine::new(width, height);
+        let initial_ai_backend = {
+            let cfg = config.read().await;
+            cfg.ai_backend.clone()
+        };
+        let mut ai_engine = AiEngine::new(width, height, &initial_ai_backend);
         let mut processor = VideoProcessor::new(width, height);
         let mut virtual_cam = VirtualCamManager::new(width, height);
 
@@ -195,11 +199,15 @@ fn run_multimedia_engine(
             }
 
             if current_cfg.ai_backend != last_ai_backend {
+                let is_reconfig = !last_ai_backend.is_empty();
                 last_ai_backend = current_cfg.ai_backend.clone();
                 match last_ai_backend.as_str() {
                     "npu" => crate::log_info!("Hardware", "Inferencia de IA activada en NPU: Intel(R) AI Boost (VPU Neural Engine)"),
                     "gpu" => crate::log_info!("Hardware", "Inferencia de IA activada en GPU: NVIDIA GeForce RTX 5060 (Tensor Cores / DirectML)"),
                     _ => crate::log_info!("Hardware", "Inferencia de IA activada en CPU: Intel Core Ultra 7 265KF (SIMD AVX2)"),
+                }
+                if is_reconfig {
+                    ai_engine = AiEngine::new(width, height, &last_ai_backend);
                 }
             }
 

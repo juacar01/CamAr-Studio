@@ -23,6 +23,12 @@ type FnAcquire = unsafe extern "C" fn(
     mesh_model_path: *const c_char,
     selfie_model_path: *const c_char,
 ) -> *mut c_void;
+type FnAcquireEx = unsafe extern "C" fn(
+    detector_model_path: *const c_char,
+    mesh_model_path: *const c_char,
+    selfie_model_path: *const c_char,
+    ai_backend: *const c_char,
+) -> *mut c_void;
 type FnRelease = unsafe extern "C" fn(tracker: *mut c_void);
 type FnNeedsFrame = unsafe extern "C" fn(tracker: *mut c_void) -> bool;
 type FnPostFrame = unsafe extern "C" fn(
@@ -66,6 +72,7 @@ type FnGetMeshLandmarks = unsafe extern "C" fn(
 struct TrackerBindings {
     dll_handle: *mut c_void,
     acquire: FnAcquire,
+    acquire_ex: Option<FnAcquireEx>,
     release: FnRelease,
     needs_frame: FnNeedsFrame,
     post_frame: FnPostFrame,
@@ -132,9 +139,17 @@ impl TrackerBindings {
                 None
             };
 
+            let acquire_ex_ptr = GetProcAddress(handle, "snapjm_face_tracker_acquire_ex\0".as_ptr());
+            let acquire_ex = if !acquire_ex_ptr.is_null() {
+                Some(std::mem::transmute::<*mut c_void, FnAcquireEx>(acquire_ex_ptr))
+            } else {
+                None
+            };
+
             Some(Self {
                 dll_handle: handle,
                 acquire: get_sym!("snapjm_face_tracker_acquire", FnAcquire),
+                acquire_ex,
                 release: get_sym!("snapjm_face_tracker_release", FnRelease),
                 needs_frame: get_sym!("snapjm_face_tracker_needs_frame", FnNeedsFrame),
                 post_frame: get_sym!("snapjm_face_tracker_post_frame", FnPostFrame),
@@ -204,9 +219,9 @@ unsafe impl Send for AiEngine {}
 unsafe impl Sync for AiEngine {}
 
 impl AiEngine {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(width: usize, height: usize, ai_backend: &str) -> Self {
         Self {
-            internal: InternalAiEngine::new(width, height),
+            internal: InternalAiEngine::new(width, height, ai_backend),
         }
     }
 
@@ -252,7 +267,7 @@ struct InternalAiEngine {
 }
 
 impl InternalAiEngine {
-    fn new(width: usize, height: usize) -> Self {
+    fn new(width: usize, height: usize, ai_backend: &str) -> Self {
         let bindings = TrackerBindings::load();
         let mut tracker_ptr = std::ptr::null_mut();
 
@@ -271,11 +286,17 @@ impl InternalAiEngine {
             let p_selfie = c_selfie.as_ref().map(|c| c.as_ptr()).unwrap_or(std::ptr::null());
 
             if !p_mesh.is_null() {
-                tracker_ptr = unsafe { (b.acquire)(p_det, p_mesh, p_selfie) };
+                let c_backend = CString::new(ai_backend).unwrap_or_else(|_| CString::new("npu").unwrap());
+                tracker_ptr = if let Some(acq_ex) = b.acquire_ex {
+                    unsafe { (acq_ex)(p_det, p_mesh, p_selfie, c_backend.as_ptr()) }
+                } else {
+                    unsafe { (b.acquire)(p_det, p_mesh, p_selfie) }
+                };
                 if !tracker_ptr.is_null() {
                     crate::log_info!(
                         "AiEngine",
-                        "Tracker MediaPipe FaceMesh 3D (Sync 0ms) & Selfie Segmentation DirectML GPU inicializado!"
+                        "Tracker MediaPipe FaceMesh 3D & Selfie Segmentation inicializado con backend: {}",
+                        ai_backend
                     );
                 }
             }
@@ -361,7 +382,7 @@ impl InternalAiEngine {
 
             // 3. Obtener landmarks 3D del FaceMesh real (468 vértices)
             let has_face = unsafe { (b.has_face)(self.tracker_ptr) };
-            if has_face && config.face_detection {
+            if has_face && (config.face_detection || config.beauty_enabled || config.active_effect != "none") {
                 let _updated = unsafe {
                     (b.get_mesh_landmarks)(
                         self.tracker_ptr,

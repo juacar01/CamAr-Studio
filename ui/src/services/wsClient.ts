@@ -115,7 +115,7 @@ export class EngineSocketClient {
   public sendConfigUpdate(effects: EffectState) {
     this.latestPendingEffects = effects;
     if (!this.pendingUpdateTimer) {
-      this.pendingUpdateTimer = window.requestAnimationFrame(() => {
+      this.pendingUpdateTimer = window.setTimeout(() => {
         if (this.socket && this.socket.readyState === WebSocket.OPEN && this.latestPendingEffects) {
           const payload = {
             command: 'UPDATE_CONFIG',
@@ -124,7 +124,7 @@ export class EngineSocketClient {
           this.socket.send(JSON.stringify(payload));
         }
         this.pendingUpdateTimer = null;
-      });
+      }, 16);
     }
   }
 

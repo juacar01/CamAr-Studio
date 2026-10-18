@@ -25,6 +25,8 @@ app_lifecycle.log
 camar_ai.log
 *.tmp
 test_rust_output.png
+*.mp4
+scratch/
 
 # Build artifacts and C++ builds
 build/

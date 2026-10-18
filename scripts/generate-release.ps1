@@ -15,15 +15,18 @@
 #>
 
 param (
-    [string]$Version = ""
+    [string]$Version = "",
+    [switch]$LocalOnly = $false
 )
 
 $ErrorActionPreference = "Stop"
 $rootDir = "d:\proyectos\CamAr Studio"
 Set-Location $rootDir
 
-# Cargar modulo de operaciones GitHub
-. "$rootDir\scripts\github-ops.ps1"
+if (-not $LocalOnly) {
+    # Cargar modulo de operaciones GitHub
+    . "$rootDir\scripts\github-ops.ps1"
+}
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   CamAr Studio - Trazabilidad y Generacion de Version    " -ForegroundColor Cyan
@@ -41,47 +44,51 @@ if ($status) {
     git commit -m "chore: guardado previo a generacion de version"
 }
 
-# 2. Si estamos en un feature, gestionar Pull Request hacia develop
-if ($currentBranch.StartsWith("feature/")) {
-    Write-Host "[2/8] Subiendo rama '$currentBranch' y generando Pull Request a 'develop'..." -ForegroundColor Green
-    git push -u origin $currentBranch
+if (-not $LocalOnly) {
+    # 2. Si estamos en un feature, gestionar Pull Request hacia develop
+    if ($currentBranch.StartsWith("feature/")) {
+        Write-Host "[2/8] Subiendo rama '$currentBranch' y generando Pull Request a 'develop'..." -ForegroundColor Green
+        git push -u origin $currentBranch
 
-    try {
-        $featurePr = New-GitHubPullRequest -Head $currentBranch -Base "develop" -Title "Feature: $currentBranch" -Body "Integracion de nueva funcionalidad desde $currentBranch hacia develop."
-        Start-Sleep -Seconds 2
-        Merge-GitHubPullRequest -PullNumber $featurePr.number -CommitTitle "merge: fusionar feature '$currentBranch' en develop (#$($featurePr.number))"
-    } catch {
-        Write-Host "   [Aviso] Se continuara con fusion local si el PR ya existia: $_" -ForegroundColor Yellow
+        try {
+            $featurePr = New-GitHubPullRequest -Head $currentBranch -Base "develop" -Title "Feature: $currentBranch" -Body "Integracion de nueva funcionalidad desde $currentBranch hacia develop."
+            Start-Sleep -Seconds 2
+            Merge-GitHubPullRequest -PullNumber $featurePr.number -CommitTitle "merge: fusionar feature '$currentBranch' en develop (#$($featurePr.number))"
+        } catch {
+            Write-Host "   [Aviso] Se continuara con fusion local si el PR ya existia: $_" -ForegroundColor Yellow
+            git checkout develop
+            git merge --no-ff $currentBranch -m "merge: fusionar feature '$currentBranch' en develop"
+            git push origin develop
+        }
+
         git checkout develop
-        git merge --no-ff $currentBranch -m "merge: fusionar feature '$currentBranch' en develop"
+        git pull origin develop
+    } else {
+        Write-Host "[2/8] En rama '$currentBranch'. Sincronizando con 'develop'..." -ForegroundColor Green
+        if ($currentBranch -ne "develop") {
+            git checkout develop
+        }
         git push origin develop
     }
 
-    git checkout develop
-    git pull origin develop
-} else {
-    Write-Host "[2/8] En rama '$currentBranch'. Sincronizando con 'develop'..." -ForegroundColor Green
-    if ($currentBranch -ne "develop") {
-        git checkout develop
+    # 3. Pull Request y fusion de develop hacia beta
+    Write-Host "[3/8] Generando Pull Request de 'develop' hacia 'beta'..." -ForegroundColor Green
+    try {
+        $betaPr = New-GitHubPullRequest -Head "develop" -Base "beta" -Title "Integracion Develop -> Beta" -Body "Pase de características validadas desde develop hacia el canal de prelanzamiento beta."
+        Start-Sleep -Seconds 2
+        Merge-GitHubPullRequest -PullNumber $betaPr.number -CommitTitle "merge: pase de develop a beta (#$($betaPr.number))"
+    } catch {
+        Write-Host "   [Aviso] Fusionando localmente hacia beta: $_" -ForegroundColor Yellow
+        git checkout beta
+        git merge --no-ff develop -m "merge: actualizacion de develop en beta"
+        git push origin beta
     }
-    git push origin develop
-}
 
-# 3. Pull Request y fusion de develop hacia beta
-Write-Host "[3/8] Generando Pull Request de 'develop' hacia 'beta'..." -ForegroundColor Green
-try {
-    $betaPr = New-GitHubPullRequest -Head "develop" -Base "beta" -Title "Integracion Develop -> Beta" -Body "Pase de características validadas desde develop hacia el canal de prelanzamiento beta."
-    Start-Sleep -Seconds 2
-    Merge-GitHubPullRequest -PullNumber $betaPr.number -CommitTitle "merge: pase de develop a beta (#$($betaPr.number))"
-} catch {
-    Write-Host "   [Aviso] Fusionando localmente hacia beta: $_" -ForegroundColor Yellow
     git checkout beta
-    git merge --no-ff develop -m "merge: actualizacion de develop en beta"
-    git push origin beta
+    git pull origin beta
+} else {
+    Write-Host "[2/8] Modo LocalOnly activo: Sin operaciones de red remotas. Trabajando en '$currentBranch'..." -ForegroundColor Yellow
 }
-
-git checkout beta
-git pull origin beta
 
 # 4. Determinar el consecutivo de version
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -217,14 +224,15 @@ if (Test-Path $isccPath) {
     }
 }
 
-# Tag Git y Push de Tags
+# Tag Git y Commit
 git add -A
 git commit -m "release: publicacion v$Version"
-git tag -a "v$Version" -m "Publicacion version v$Version"
-git push origin beta --tags
-
-# Retornar a develop para continuar el flujo de desarrollo
-git checkout develop
+git tag -a "v$Version" -m "Publicacion version v$Version" -f
+if (-not $LocalOnly) {
+    git push origin beta --tags
+    # Retornar a develop para continuar el flujo de desarrollo
+    git checkout develop
+}
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " [EXITO] Version v$Version publicada con trazabilidad:" -ForegroundColor Cyan

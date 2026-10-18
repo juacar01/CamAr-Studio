@@ -22,9 +22,9 @@
   "video_backend": "gpu_d3d12",
   "ai_backend": "npu",
   "camera_profiles": {
-    "2": {
-      "width": 1920,
-      "height": 1080,
+    "synthetic": {
+      "width": 3840,
+      "height": 2160,
       "fps": 60,
       "format": "NV12",
       "saturation": 1.0,
@@ -37,9 +37,9 @@
       "color_range": "Full",
       "color_space": "Rec709"
     },
-    "synthetic": {
-      "width": 3840,
-      "height": 2160,
+    "2": {
+      "width": 1920,
+      "height": 1080,
       "fps": 60,
       "format": "NV12",
       "saturation": 1.0,

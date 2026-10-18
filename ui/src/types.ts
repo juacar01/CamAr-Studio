@@ -62,6 +62,7 @@ export interface EffectState {
   skinWhitening?: number;
   faceSlim: number;
   eyeEnlarge: number;
+  eyeShape?: string; // 'auto' | 'almond' | 'foxy' | 'asian' | 'doe' | 'hooded'
   eyeRound?: number;
   eyeBrighten?: number;
   eyeCatchlight?: number;
@@ -79,7 +80,16 @@ export interface EffectState {
   eyeshadow: number;
   eyeshadowColor?: string;
   eyeshadowStyle?: string;
+  eyebrows: number;
+  eyebrowColor?: string;
+  eyebrowStyle?: string;
   contour: number;
+  beardEnhancement?: number;
+  beard_enhancement?: number;
+  beardColor?: string;
+  beard_color?: string;
+  activeEffect?: string;
+  effectIntensity?: number;
 
   // Background
   bgMode: BackgroundMode;
@@ -118,6 +128,7 @@ export interface BaseAppearanceState {
   skinWhitening?: number;
   faceSlim: number;
   eyeEnlarge: number;
+  eyeShape?: string;
   eyeRound?: number;
   eyeBrighten?: number;
   eyeCatchlight?: number;
@@ -133,7 +144,14 @@ export interface BaseAppearanceState {
   eyeshadow: number;
   eyeshadowColor?: string;
   eyeshadowStyle?: string;
+  eyebrows: number;
+  eyebrowColor?: string;
+  eyebrowStyle?: string;
   contour: number;
+  beard_enhancement?: number;
+  beard_color?: string;
+  beardEnhancement?: number;
+  beardColor?: string;
   irisLighting?: number;
   irisColor?: string;
 }
@@ -218,8 +236,16 @@ export interface PresetFaceLight {
 
 export interface PresetMakeup {
   lipstick: number;
+  lipstick_color?: string;
   eyeshadow: number;
+  eyeshadow_color?: string;
+  eyeshadow_style?: string;
+  eyebrows?: number;
+  eyebrow_color?: string;
+  eyebrow_style?: string;
   contour: number;
+  beard_enhancement?: number;
+  beard_color?: string;
   teeth_whitening: number;
   eye_brighten: number;
   eye_catchlight?: number;

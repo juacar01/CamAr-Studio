@@ -917,8 +917,16 @@ static void init_tracker_mutex()
 }
 
 snapjm_face_tracker_t *snapjm_face_tracker_acquire(const char *detector_model_path,
-                                                  const char *mesh_model_path,
-                                                  const char *selfie_model_path)
+                                                   const char *mesh_model_path,
+                                                   const char *selfie_model_path)
+{
+    return snapjm_face_tracker_acquire_ex(detector_model_path, mesh_model_path, selfie_model_path, "npu");
+}
+
+snapjm_face_tracker_t *snapjm_face_tracker_acquire_ex(const char *detector_model_path,
+                                                      const char *mesh_model_path,
+                                                      const char *selfie_model_path,
+                                                      const char *ai_backend)
 {
     init_tracker_mutex();
     EnterCriticalSection(&s_tracker_mutex);
@@ -936,8 +944,7 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire(const char *detector_model_pa
 
     snapjm_face_tracker *tracker = new snapjm_face_tracker();
     try {
-        // Dedicated low-latency CPU session options for synchronous 192x192 FaceMesh & 320x240 UltraFace
-        // Avoids D3D12 command queue serialization behind background Selfie Segmentation
+        // Dedicated low-latency CPU session options
         Ort::SessionOptions session_options_cpu;
         session_options_cpu.SetIntraOpNumThreads(4);
         session_options_cpu.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -946,11 +953,42 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire(const char *detector_model_pa
         Ort::SessionOptions session_options_dml;
         session_options_dml.SetIntraOpNumThreads(2);
         session_options_dml.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+        bool dml_ok = false;
         try {
             OrtSessionOptionsAppendExecutionProvider_DML(session_options_dml, 0);
             blog(LOG_INFO, "[SnapJM Tracker] DirectML GPU Execution Provider activado (Device 0).");
+            dml_ok = true;
         } catch (...) {
             blog(LOG_WARNING, "[SnapJM Tracker] DirectML no disponible, continuando en CPU.");
+        }
+
+        // Selección de backend para FaceMesh según ai_backend ("npu", "gpu", "cpu")
+        Ort::SessionOptions session_options_npu;
+        Ort::SessionOptions *p_session_options_mesh = &session_options_cpu;
+
+        if (ai_backend && strcmp(ai_backend, "npu") == 0) {
+            bool npu_ok = false;
+            try {
+                // Device 1 corresponde al acelerador de cómputo / NPU Intel AI Boost en DirectML
+                session_options_npu.SetIntraOpNumThreads(2);
+                session_options_npu.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+                OrtSessionOptionsAppendExecutionProvider_DML(session_options_npu, 1);
+                p_session_options_mesh = &session_options_npu;
+                blog(LOG_INFO, "[SnapJM Tracker] Inferencia NPU activada (Intel AI Boost / DirectML Device 1).");
+                npu_ok = true;
+            } catch (...) {
+                blog(LOG_WARNING, "[SnapJM Tracker] NPU Device 1 no disponible, usando aceleración GPU DirectML.");
+            }
+            if (!npu_ok && dml_ok) {
+                p_session_options_mesh = &session_options_dml;
+            }
+        } else if (ai_backend && strcmp(ai_backend, "gpu") == 0) {
+            if (dml_ok) {
+                p_session_options_mesh = &session_options_dml;
+                blog(LOG_INFO, "[SnapJM Tracker] Inferencia GPU activada para FaceMesh (Tensor Cores / DirectML).");
+            }
+        } else {
+            blog(LOG_INFO, "[SnapJM Tracker] Inferencia CPU AVX2 multihilo activada para FaceMesh.");
         }
 
         // 1. Load UltraFace Detector (Synchronous Zero-Wait CPU AVX2)
@@ -961,12 +999,17 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire(const char *detector_model_pa
             tracker->sess_detector = new Ort::Session(tracker->env, wpath.c_str(), session_options_cpu);
         }
 
-        // 2. Load FaceMesh (Synchronous Zero-Wait CPU AVX2)
+        // 2. Load FaceMesh (con backend NPU / GPU / CPU seleccionado con fallback automático a CPU)
         if (mesh_model_path) {
             int wlen = MultiByteToWideChar(CP_UTF8, 0, mesh_model_path, -1, NULL, 0);
             std::wstring wpath(wlen, 0);
             MultiByteToWideChar(CP_UTF8, 0, mesh_model_path, -1, &wpath[0], wlen);
-            tracker->sess_mesh = new Ort::Session(tracker->env, wpath.c_str(), session_options_cpu);
+            try {
+                tracker->sess_mesh = new Ort::Session(tracker->env, wpath.c_str(), *p_session_options_mesh);
+            } catch (...) {
+                blog(LOG_WARNING, "[SnapJM Tracker] Error al crear sesión acelerada FaceMesh, fallback seguro a CPU.");
+                tracker->sess_mesh = new Ort::Session(tracker->env, wpath.c_str(), session_options_cpu);
+            }
         }
 
         // 3. Load Selfie Segmentation (Asynchronous Background GPU DirectML)
@@ -974,7 +1017,11 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire(const char *detector_model_pa
             int wlen = MultiByteToWideChar(CP_UTF8, 0, selfie_model_path, -1, NULL, 0);
             std::wstring wpath(wlen, 0);
             MultiByteToWideChar(CP_UTF8, 0, selfie_model_path, -1, &wpath[0], wlen);
-            tracker->sess_selfie = new Ort::Session(tracker->env, wpath.c_str(), session_options_dml);
+            try {
+                tracker->sess_selfie = new Ort::Session(tracker->env, wpath.c_str(), session_options_dml);
+            } catch (...) {
+                tracker->sess_selfie = new Ort::Session(tracker->env, wpath.c_str(), session_options_cpu);
+            }
 
             Ort::AllocatorWithDefaultOptions alloc;
             auto in_name = tracker->sess_selfie->GetInputNameAllocated(0, alloc);
