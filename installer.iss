@@ -1,4 +1,4 @@
-﻿; Inno Setup Script para CamAr Studio (Beta)
+; Inno Setup Script para CamAr Studio (Beta)
 #define MyAppName "CamAr Studio"
 #define MyAppVersion "0.1.2-beta"
 #define MyAppPublisher "CamAr Studio"

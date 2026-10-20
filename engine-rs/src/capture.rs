@@ -77,6 +77,13 @@ impl VideoCapture {
                     }
                 }
 
+                // Limitar estrictamente a un máximo de 30 FPS para captura eficiente y estable
+                formats.retain(|f| f.fps <= 30);
+                if formats.is_empty() {
+                    // Fallback de seguridad si el driver reportara solo 60 fps
+                    formats.push(CameraFormatInfo { width: 1920, height: 1080, fps: 30, format: "NV12".to_string() });
+                }
+
                 // Ordenar formatos: mayor resolución y FPS primero
                 formats.sort_by(|a, b| {
                     b.width
@@ -89,21 +96,16 @@ impl VideoCapture {
             }
         }
 
-        // Simulador de Estudio con múltiples resoluciones y tasas de cuadros (4K, 2K, 1080p, 720p, 480p @ 60/30 FPS)
+        // Simulador de Estudio con múltiples resoluciones @ máx 30 FPS
         devices.push(CameraDeviceInfo {
             id: "synthetic".to_string(),
             name: "CamAr Studio Simulator (Test Pattern & Avatar)".to_string(),
             formats: vec![
-                CameraFormatInfo { width: 3840, height: 2160, fps: 60, format: "NV12".to_string() },
                 CameraFormatInfo { width: 3840, height: 2160, fps: 30, format: "NV12".to_string() },
-                CameraFormatInfo { width: 2560, height: 1440, fps: 60, format: "NV12".to_string() },
                 CameraFormatInfo { width: 2560, height: 1440, fps: 30, format: "NV12".to_string() },
-                CameraFormatInfo { width: 1920, height: 1080, fps: 60, format: "NV12".to_string() },
                 CameraFormatInfo { width: 1920, height: 1080, fps: 30, format: "NV12".to_string() },
                 CameraFormatInfo { width: 1920, height: 1080, fps: 30, format: "YUY2".to_string() },
-                CameraFormatInfo { width: 1280, height: 720, fps: 60, format: "NV12".to_string() },
                 CameraFormatInfo { width: 1280, height: 720, fps: 30, format: "NV12".to_string() },
-                CameraFormatInfo { width: 854, height: 480, fps: 60, format: "NV12".to_string() },
                 CameraFormatInfo { width: 854, height: 480, fps: 30, format: "NV12".to_string() },
             ],
         });
@@ -157,10 +159,11 @@ impl VideoCapture {
         let h = self.height;
 
         let handle = thread::spawn(move || {
+            let capped_fps = fps.clamp(1, 30);
             let req_format = RequestedFormat::new::<RgbAFormat>(RequestedFormatType::Closest(CameraFormat::new(
                 Resolution::new(width, height),
                 fourcc,
-                fps,
+                capped_fps,
             )));
 
             match Camera::new(index, req_format) {

@@ -144,7 +144,7 @@ pub fn locate_iris_disc(
     let bot_mid_y = sample_lid_y(lower_pts, arch_mid_x);
     let eye_h = (bot_mid_y - top_mid_y).max(2.0);
     let mid_y = (top_mid_y + bot_mid_y) * 0.5;
-    let r_anat = (eye_w * 0.212).max(eye_h * 0.48).clamp(4.0, 28.0);
+    let r_anat = (eye_w * 0.222).clamp(5.0, 32.0);
 
     if eye_h < eye_w * 0.12 || input_rgba.len() < width * height * 4 {
         return (arch_mid_x, mid_y, r_anat, 0.12, 0.38);
@@ -250,31 +250,62 @@ pub fn locate_iris_disc(
     let (cx, iris_rad) = if c_l >= 0.035 && c_r >= 0.035 {
         let det_cx = 0.5 * (x_l + x_r);
         let det_r = 0.5 * (x_r - x_l) * 1.02;
-        let r_blend = (0.72 * det_r + 0.28 * r_anat).clamp(eye_w * 0.195, eye_w * 0.236);
+        let r_blend = (0.70 * det_r + 0.30 * r_anat).clamp(eye_w * 0.200, eye_w * 0.245);
         (det_cx, r_blend)
     } else if c_l >= 0.035 {
-        let r_use = r_anat.clamp(eye_w * 0.195, eye_w * 0.230);
+        let r_use = r_anat.clamp(eye_w * 0.200, eye_w * 0.240);
         (x_l + r_use, r_use)
     } else if c_r >= 0.035 {
-        let r_use = r_anat.clamp(eye_w * 0.195, eye_w * 0.230);
+        let r_use = r_anat.clamp(eye_w * 0.200, eye_w * 0.240);
         (x_r - r_use, r_use)
     } else {
-        let r_use = r_anat.clamp(eye_w * 0.195, eye_w * 0.230);
+        let r_use = r_anat.clamp(eye_w * 0.200, eye_w * 0.240);
         (arch_mid_x, r_use)
     };
 
     let y_t_cx = sample_lid_y(upper_pts, cx);
     let y_b_cx = sample_lid_y(lower_pts, cx);
     let h_cx = (y_b_cx - y_t_cx).max(2.0);
-    let y_top_cut = y_t_cx + 0.085 * h_cx;
-    let y_bot_cut = y_b_cx - 0.020 * h_cx;
-    let cy = (y_bot_cut - 0.86 * iris_rad).clamp(
-        y_top_cut + 0.36 * iris_rad,
-        (y_bot_cut - 0.74 * iris_rad).max(y_top_cut + 0.36 * iris_rad),
-    );
+
+    // Escaneo óptico vertical a lo largo de cx para localizar el centro real de la pupila oscura
+    const M: usize = 25;
+    let mut min_vert_lum = 1e9_f32;
+    let mut best_cy = (y_t_cx + y_b_cx) * 0.5;
+    let y_v_start = y_t_cx + h_cx * 0.10;
+    let y_v_end = y_b_cx - h_cx * 0.10;
+    let y_span = (y_v_end - y_v_start).max(2.0);
+
+    for j in 0..M {
+        let sy = y_v_start + (j as f32 / (M - 1) as f32) * y_span;
+        let l0 = sample_luma(cx - 1.0, sy);
+        let l1 = sample_luma(cx, sy);
+        let l2 = sample_luma(cx + 1.0, sy);
+        let lum_v = (l0 + l1 * 2.0 + l2) * 0.25;
+        if lum_v < min_vert_lum {
+            min_vert_lum = lum_v;
+            best_cy = sy;
+        }
+    }
+
+    let mid_y_cx = (y_t_cx + y_b_cx) * 0.5;
+    let raw_cy = if min_vert_lum < p_iris + 0.16 {
+        0.80 * best_cy + 0.20 * mid_y_cx
+    } else {
+        mid_y_cx
+    };
+
+    // Rango seguro: garantizar incondicionalmente que safe_min <= safe_max para evitar panics de clamp
+    let min_limit = (y_t_cx - iris_rad * 0.35).min(y_b_cx);
+    let max_limit = (y_b_cx + iris_rad * 0.35).max(y_t_cx);
+    let (safe_min, safe_max) = if min_limit <= max_limit {
+        (min_limit, max_limit)
+    } else {
+        (max_limit, min_limit)
+    };
+    let cy = raw_cy.clamp(safe_min, safe_max);
 
     let sclera_lum = c_l.min(c_r).max(0.06) + p_iris;
-    (cx, cy, iris_rad.clamp(4.0, 28.0), p_iris, sclera_lum)
+    (cx, cy, iris_rad.clamp(4.0, 32.0), p_iris, sclera_lum)
 }
 
 /// Construye la malla 3D de 38 triángulos para la cuenca orbital del ojo y párpado móvil.

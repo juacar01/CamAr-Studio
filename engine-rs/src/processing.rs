@@ -14,6 +14,7 @@ pub mod effects;
 pub mod mesh3d;
 pub mod beard;
 pub mod face_inset;
+pub mod submeshes;
 
 pub use face_mesh::*;
 #[allow(unused_imports)]
@@ -21,6 +22,7 @@ pub use effects::*;
 pub use mesh3d::*;
 pub use beard::*;
 pub use face_inset::*;
+pub use submeshes::*;
 
 pub use color::*;
 pub use geometry::*;
@@ -83,12 +85,13 @@ pub struct VideoProcessor {
     locked_contrast: f32,
     lighting_hold_frames: u32,
     lighting_initialized: bool,
+    adaptive_forehead: AdaptiveForeheadMesh,
 }
 
 impl VideoProcessor {
     pub fn new(width: usize, height: usize) -> Self {
         let mut gaussian_lut = [0.0f32; 256];
-        let two_sigma_sq = 2.0 * 0.075 * 0.075; // 0.01125
+        let two_sigma_sq = 2.0 * 0.120 * 0.120; // 0.0288
         for i in 0..256 {
             let diff = i as f32 / 255.0;
             gaussian_lut[i] = (-diff * diff / two_sigma_sq).exp();
@@ -183,6 +186,7 @@ impl VideoProcessor {
             locked_contrast: 1.0,
             lighting_hold_frames: 0,
             lighting_initialized: false,
+            adaptive_forehead: AdaptiveForeheadMesh::new(),
         }
     }
 
@@ -1157,6 +1161,14 @@ impl VideoProcessor {
             None
         };
         let face_uv_map = &self.face_mesh_renderer.face_uv_map;
+
+        // Sub-Malla 3D Adaptada por Gradiente Tonal (Extensión Natural de Frente hasta el Cabello)
+        if beauty_enabled {
+            if let Some(face) = active_face {
+                self.adaptive_forehead.compute(&face.landmarks, input_rgba, width, height);
+            }
+        }
+        let adaptive_forehead = &self.adaptive_forehead;
         let master_makeup = &self.master_makeup_rgba;
 
         let lut = &self.gaussian_lut;
@@ -1347,24 +1359,42 @@ impl VideoProcessor {
                                     let skin_sat = (cr - cb).max(0.0);
                                     let lum = 0.2126 * raw_r + 0.7152 * raw_g + 0.0722 * raw_b;
 
-                                    if lum < 0.38 || skin_sat < 0.040 {
-                                        skin_val = 0.0;
-                                    }
+                                    // Transición suave orgánica (Feathering) en lugar de corte duro (0.0):
+                                    // Evita parches marcados en bigote, barba y sombras faciales
+                                    let lum_factor = ((lum - 0.22) / (0.42 - 0.22)).clamp(0.0, 1.0);
+                                    let sat_factor = (skin_sat / 0.065).clamp(0.0, 1.0);
+                                    let beard_t = lum_factor * sat_factor;
+                                    let smooth_beard_fade = beard_t * beard_t * (3.0 - 2.0 * beard_t);
+                                    skin_val *= smooth_beard_fade;
                                 }
                             }
                         }
                     }
 
-                    // Exclusión estricta de orejas: Si el píxel está lateralmente fuera de los pómulos/mandíbula,
-                    // pertenece a la oreja, cabello o fondo. Forzar skin_val = 0.0 para no desenfocar jamás las orejas.
-                    if let Some((_, _, eye_dist, face_left, face_right)) = face_geom {
-                        let margin = eye_dist * 0.08;
-                        if px < face_left {
-                            let t = ((px - (face_left - margin)) / margin).clamp(0.0, 1.0);
-                            skin_val *= t * t * (3.0 - 2.0 * t);
-                        } else if px > face_right {
-                            let t = (((face_right + margin) - px) / margin).clamp(0.0, 1.0);
-                            skin_val *= t * t * (3.0 - 2.0 * t);
+                    // Delimitación Anatómica con Sub-Mallas 3D y Adaptación Tonal:
+                    // 1. Malla 3D facial canónica interna (pómulos, nariz, mandíbula).
+                    // 2. Sub-Malla 3D Adaptada de Frente (extensión calculada por gradientes tonales contra el cabello).
+                    // 3. Región de cuello (bajo barbilla) sin desborde a orejas o fondo.
+                    let packed_mesh = face_uv_map.get(y * width + x).copied().unwrap_or(0);
+                    let is_in_face_mesh = packed_mesh > 0;
+                    if !is_in_face_mesh {
+                        let mut keep_skin = false;
+                        if let Some(face) = active_face {
+                            let chin_y = face.landmarks.get(152).map(|c| c.y).unwrap_or(height as f32);
+                            let top_forehead_y = face.landmarks.get(10).map(|t| t.y).unwrap_or(0.0);
+
+                            // Cuello bajo barbilla
+                            let is_neck = py > chin_y;
+
+                            // Frente adaptada por gradiente de color/contraste tonal (llega exactamente hasta el pelo)
+                            let is_forehead = adaptive_forehead.is_in_forehead(px, py, top_forehead_y);
+
+                            if is_neck || is_forehead {
+                                keep_skin = true;
+                            }
+                        }
+                        if !keep_skin {
+                            skin_val *= 0.10;
                         }
                     }
 
@@ -1606,7 +1636,10 @@ impl VideoProcessor {
                     if beauty_active && skin_val > 0.02 {
                         // Protección anatómica: ojos y labios quedan completamente protegidos
                         let feat_factor = (1.0 - eyes_val * 1.5).clamp(0.0, 1.0) * (1.0 - lips_val * 1.5).clamp(0.0, 1.0);
-                        let mut smooth_blend = skin_intensity * skin_val * feat_factor;
+                        // Curva de respuesta perceptual para el slider:
+                        // A 35%-50% ya entrega una textura sedosa y uniforme evidente, dejando el 80-100% para acabado porcelana intenso
+                        let eff_intensity = 1.0 - (1.0 - skin_intensity).powi(2);
+                        let mut smooth_blend = (eff_intensity * skin_val * feat_factor).clamp(0.0, 1.0);
 
                         // Si el usuario activa el realce de barba, preservar la textura y nitidez de los vellos
                         if beard_enhancement > 0.001 {
@@ -1623,15 +1656,15 @@ impl VideoProcessor {
                             let lum_center = 0.2126 * r + 0.7152 * g + 0.0722 * b;
                             let lum_center_i = (lum_center * 255.0) as i32;
 
-                            // Paso de muestreo adaptativo a la resolución de imagen
-                            let s1 = (width / 450).clamp(1, 3) as i32;
+                            // Paso de muestreo adaptativo a la resolución de imagen (mayor cobertura para poros en 1080p)
+                            let s1 = (width / 360).clamp(2, 5) as i32;
                             let s2 = s1 * 2;
                             let s3 = s1 * 3;
 
-                            let mut sum_r = r * 2.0;
-                            let mut sum_g = g * 2.0;
-                            let mut sum_b = b * 2.0;
-                            let mut sum_w = 2.0_f32;
+                            let mut sum_r = r * 0.6;
+                            let mut sum_g = g * 0.6;
+                            let mut sum_b = b * 0.6;
+                            let mut sum_w = 0.6_f32;
 
                             // Muestreo simétrico multi-anillo (cercano, diagonal, medio, exterior)
                             let samples = [
@@ -1641,20 +1674,25 @@ impl VideoProcessor {
                                 (x as i32, y as i32 - s1, 1.00f32),
                                 (x as i32, y as i32 + s1, 1.00f32),
                                 // Diagonales (distancia 1.4)
-                                (x as i32 - s1, y as i32 - s1, 0.70f32),
-                                (x as i32 + s1, y as i32 - s1, 0.70f32),
-                                (x as i32 - s1, y as i32 + s1, 0.70f32),
-                                (x as i32 + s1, y as i32 + s1, 0.70f32),
+                                (x as i32 - s1, y as i32 - s1, 0.75f32),
+                                (x as i32 + s1, y as i32 - s1, 0.75f32),
+                                (x as i32 - s1, y as i32 + s1, 0.75f32),
+                                (x as i32 + s1, y as i32 + s1, 0.75f32),
                                 // Anillo medio (distancia 2)
-                                (x as i32 - s2, y as i32, 0.50f32),
-                                (x as i32 + s2, y as i32, 0.50f32),
-                                (x as i32, y as i32 - s2, 0.50f32),
-                                (x as i32, y as i32 + s2, 0.50f32),
+                                (x as i32 - s2, y as i32, 0.55f32),
+                                (x as i32 + s2, y as i32, 0.55f32),
+                                (x as i32, y as i32 - s2, 0.55f32),
+                                (x as i32, y as i32 + s2, 0.55f32),
+                                // Diagonales intermedias
+                                (x as i32 - s2, y as i32 - s2, 0.40f32),
+                                (x as i32 + s2, y as i32 - s2, 0.40f32),
+                                (x as i32 - s2, y as i32 + s2, 0.40f32),
+                                (x as i32 + s2, y as i32 + s2, 0.40f32),
                                 // Anillo exterior para homogeneizar tez (distancia 3)
-                                (x as i32 - s3, y as i32, 0.30f32),
-                                (x as i32 + s3, y as i32, 0.30f32),
-                                (x as i32, y as i32 - s3, 0.30f32),
-                                (x as i32, y as i32 + s3, 0.30f32),
+                                (x as i32 - s3, y as i32, 0.35f32),
+                                (x as i32 + s3, y as i32, 0.35f32),
+                                (x as i32, y as i32 - s3, 0.35f32),
+                                (x as i32, y as i32 + s3, 0.35f32),
                             ];
 
                             for &(nx, ny, spatial_w) in &samples {
@@ -1826,13 +1864,10 @@ impl VideoProcessor {
                                 if eye_sx >= eye.left_x && eye_sx <= eye.right_x {
                                     let y_top_raw = sample_lid_y(&eye.upper_pts, eye_sx);
                                     let y_bot_raw = sample_lid_y(&eye.lower_pts, eye_sx);
-                                    // Recorte palpebral anatómico exacto: justo debajo de la línea de pestañas superiores
-                                    // y en el borde interno del párpado inferior para que el círculo se corte limpiamente
-                                    let y_top = y_top_raw + eye.eye_h * 0.085;
-                                    let y_bot = y_bot_raw - eye.eye_h * 0.020;
-                                    if eye_sy > y_top && eye_sy < y_bot {
-                                        let ap_top = ((eye_sy - y_top) * 1.15).clamp(0.0, 1.0);
-                                        let ap_bot = ((y_bot - eye_sy) * 1.15).clamp(0.0, 1.0);
+                                    // Recorte palpebral anatómico exacto en los párpados superior e inferior con antialiasing de 1 px
+                                    if eye_sy >= y_top_raw && eye_sy <= y_bot_raw {
+                                        let ap_top = (eye_sy - y_top_raw).clamp(0.0, 1.0);
+                                        let ap_bot = (y_bot_raw - eye_sy).clamp(0.0, 1.0);
                                         let ap_alpha = ap_top * ap_bot;
 
                                         let dx_i = eye_sx - eye.pupil_x;
@@ -1872,7 +1907,7 @@ impl VideoProcessor {
 
                                                     // Sombreado esférico 3D bajo el párpado superior manteniendo tonos claros y luminosos
                                                     // incluso sobre ojos oscuros (como en la Imagen 3 de referencia)
-                                                    let lid_t = ((eye_sy - y_top) / (eye.eye_h * 0.45).max(1.5)).clamp(0.0, 1.0);
+                                                    let lid_t = ((eye_sy - y_top_raw) / (eye.eye_h * 0.45).max(1.5)).clamp(0.0, 1.0);
                                                     let lid_shadow = (0.76 + 0.26 * lid_t) * backlight_factor.max(0.84);
 
                                                     // Superposición directa por canal Alpha del .PNG:
