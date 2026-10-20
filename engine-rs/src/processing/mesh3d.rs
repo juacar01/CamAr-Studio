@@ -91,8 +91,8 @@ pub fn estimate_head_pose_3d(
     let p_356 = landmarks[356]; // Sien derecha del cráneo
     let p_1 = landmarks[1];     // Punta de nariz
     let p_168 = landmarks[168]; // Puente nasal / entrecejo
-    let p_9 = landmarks[9];     // Glabella (entre las cejas)
-    let p_10 = landmarks[10];   // Centro superior de la frente (nacimiento de pelo)
+    let _p_9 = landmarks[9];     // Glabella (entre las cejas)
+    let _p_10 = landmarks[10];   // Centro superior de la frente (nacimiento de pelo)
     let p_152 = landmarks[152]; // Barbilla / mentón
 
     let raw_dx = p_356.x - p_127.x;
@@ -117,9 +117,11 @@ pub fn estimate_head_pose_3d(
     let vert_ratio = face_h / temple_dist;
     let raw_pitch_rad = ((0.85 - vert_ratio) * 1.2).clamp(-0.7, 0.7);
 
-    // Centro del casco 3D: anclado en la frente frontal (entre glabella y nacimiento de pelo)
-    let raw_cx = p_9.x * 0.25 + p_10.x * 0.75;
-    let raw_cy = p_9.y * 0.25 + p_10.y * 0.75;
+    // Centro 3D del cráneo (pivote anatómico de rotación de la cabeza):
+    // Eje X: punto medio entre sienes p_127 y p_356
+    // Eje Y: altura del puente nasal / ojos p_168
+    let raw_cx = (p_127.x + p_356.x) * 0.5;
+    let raw_cy = (p_127.y + p_356.y) * 0.5 * 0.35 + p_168.y * 0.65;
 
     // Filtro temporal adaptativo para eliminar micro-temblores a 60 FPS
     let (cx, cy, scale, yaw, pitch, roll) = match *smoothed {
@@ -208,13 +210,24 @@ impl Mesh3DRenderer {
         }
     }
 
+    pub fn resize(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
+        self.z_buffer.resize(width * height, 1e9f32);
+        self.z_buffer.fill(1e9f32);
+        self.prev_box = (0, 0, 0, 0);
+    }
+
     /// Limpia el Z-buffer en la región usada en el frame anterior
     pub fn clear_dirty_region(&mut self) {
         let (p_min_x, p_max_x, p_min_y, p_max_y) = self.prev_box;
         if p_max_x >= p_min_x && p_max_y >= p_min_y && p_max_x < self.width && p_max_y < self.height {
             for y in p_min_y..=p_max_y {
                 let row_start = y * self.width;
-                self.z_buffer[row_start + p_min_x..=row_start + p_max_x].fill(1e9f32);
+                let end_idx = row_start + p_max_x;
+                if end_idx < self.z_buffer.len() {
+                    self.z_buffer[row_start + p_min_x..=end_idx].fill(1e9f32);
+                }
             }
         }
     }
@@ -272,10 +285,10 @@ impl Mesh3DRenderer {
         let mut min_bound_y = height - 1;
         let mut max_bound_y = 0;
 
-        // Oclusión con cráneo virtual (elipsoide de la cabeza)
-        let r_skull_x = 65.0 * scale;
+        // Oclusión con cráneo virtual (elipsoide de la cabeza centrado en el cráneo)
+        let r_skull_x = 68.0 * scale;
         let r_skull_y = 85.0 * scale;
-        let skull_cy = cy + 20.0 * scale;
+        let skull_cy = cy - 5.0 * scale;
 
         // 2. Rasterización de triángulos con coordenadas baricéntricas y Z-Buffer
         for tri in &mesh.triangles {
@@ -372,18 +385,18 @@ impl Mesh3DRenderer {
                         }
 
                         let z_idx = row_start + x;
-                        if depth < self.z_buffer[z_idx] {
+                        let out_idx = out_row_start + x * 4;
+                        if z_idx < self.z_buffer.len() && out_idx + 3 < output_buffer.len() && depth < self.z_buffer[z_idx] {
                             self.z_buffer[z_idx] = depth;
                             drawn_pixels += 1;
 
-                            let idx = out_row_start + x * 4;
-                            let cur_r = output_buffer[idx] as f32;
-                            let cur_g = output_buffer[idx + 1] as f32;
-                            let cur_b = output_buffer[idx + 2] as f32;
+                            let cur_r = output_buffer[out_idx] as f32;
+                            let cur_g = output_buffer[out_idx + 1] as f32;
+                            let cur_b = output_buffer[out_idx + 2] as f32;
 
-                            output_buffer[idx] = (cur_r * (1.0 - intensity) + horn_r * intensity).clamp(0.0, 255.0) as u8;
-                            output_buffer[idx + 1] = (cur_g * (1.0 - intensity) + horn_g * intensity).clamp(0.0, 255.0) as u8;
-                            output_buffer[idx + 2] = (cur_b * (1.0 - intensity) + horn_b * intensity).clamp(0.0, 255.0) as u8;
+                            output_buffer[out_idx] = (cur_r * (1.0 - intensity) + horn_r * intensity).clamp(0.0, 255.0) as u8;
+                            output_buffer[out_idx + 1] = (cur_g * (1.0 - intensity) + horn_g * intensity).clamp(0.0, 255.0) as u8;
+                            output_buffer[out_idx + 2] = (cur_b * (1.0 - intensity) + horn_b * intensity).clamp(0.0, 255.0) as u8;
                         }
                     }
                 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Video, VideoOff, Wifi, WifiOff, Sparkles, SlidersHorizontal, Camera, Mic, MicOff, Terminal, Cpu } from 'lucide-react';
+import { Video, VideoOff, Wifi, WifiOff, Sparkles, SlidersHorizontal, Camera, Mic, MicOff, Terminal, Cpu, RotateCw } from 'lucide-react';
 import type { CameraDeviceInfo } from '../types';
 
 interface StudioHeaderProps {
@@ -21,6 +21,8 @@ interface StudioHeaderProps {
   selectedHeight: number;
   selectedFps: number;
   selectedFormat: string;
+  cameraRotation?: number;
+  onRotateCamera?: () => void;
 
   // Audio resumen
   selectedAudioId: string;
@@ -42,6 +44,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   selectedHeight,
   selectedFps,
   selectedFormat,
+  cameraRotation = 0,
+  onRotateCamera,
   audioMuted,
   onToggleMute,
   audioPeakDb,
@@ -49,6 +53,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   const currentCamera = cameras.find((c) => c.id === selectedCameraId) || cameras[0];
   const camDisplayName = currentCamera ? currentCamera.name : 'CamAr Studio Simulator';
 
+  const isPortrait = cameraRotation === 90 || cameraRotation === 270;
+  const displayW = isPortrait ? selectedHeight : selectedWidth;
+  const displayH = isPortrait ? selectedWidth : selectedHeight;
   const vuPercent = Math.min(100, Math.max(0, ((audioPeakDb + 60) / 60) * 100));
 
   return (
@@ -72,7 +79,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
       </div>
 
       {/* BOTÓN CENTRAL: SELECCIÓN Y CONFIGURACIÓN DE FUENTE */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2.5">
         <button
           onClick={onOpenSourceModal}
           className="group flex items-center space-x-3 px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-750 border border-neutral-700/80 hover:border-pink-500/50 shadow-md transition-all cursor-pointer"
@@ -83,11 +90,11 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
 
           <div className="text-left">
             <div className="flex items-center space-x-2">
-              <span className="font-bold text-neutral-100 group-hover:text-pink-300 transition-colors max-w-[240px] truncate">
+              <span className="font-bold text-neutral-100 group-hover:text-pink-300 transition-colors max-w-[220px] truncate">
                 {camDisplayName}
               </span>
               <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-neutral-900 border border-neutral-700 text-neutral-300">
-                {selectedWidth}×{selectedHeight} @ {selectedFps} FPS • {selectedFormat}
+                {displayW}×{displayH} @ {selectedFps} FPS • {selectedFormat}
               </span>
             </div>
             <div className="text-[10px] text-neutral-400 flex items-center space-x-1">
@@ -96,6 +103,25 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             </div>
           </div>
         </button>
+
+        {/* Botón Rápido de Rotación 90° (Orientación Vertical / Apaisado) */}
+        {onRotateCamera && (
+          <button
+            onClick={onRotateCamera}
+            title={`Orientación actual: ${cameraRotation}°. Clic para rotar 90°`}
+            className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+              isPortrait
+                ? 'bg-pink-500/20 border-pink-500/60 text-pink-300 shadow-sm shadow-pink-500/20 font-bold'
+                : 'bg-neutral-800 hover:bg-neutral-750 border-neutral-700/80 text-neutral-300 hover:text-white'
+            }`}
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isPortrait ? 'text-pink-400' : 'text-neutral-400'}`} />
+            <span className="font-mono text-[11px]">{cameraRotation}°</span>
+            {isPortrait && (
+              <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-pink-500/30 text-pink-200">9:16</span>
+            )}
+          </button>
+        )}
 
         {/* Mini Vúmetro de Audio */}
         <div className="flex items-center space-x-2 bg-neutral-950/60 px-3 py-2 rounded-xl border border-neutral-800">

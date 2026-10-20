@@ -1,2 +1,3 @@
 [build]
-rustflags = ["-C", "target-cpu=native", "-C", "opt-level=3"]
+# Configuración de compilación portátil universal compatible con Intel y AMD Ryzen
+rustflags = ["-C", "opt-level=3"]

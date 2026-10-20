@@ -248,6 +248,10 @@ pub struct StudioConfig {
     #[serde(default = "default_backend_cpu")]
     pub ai_backend: String,    // "cpu" (default), "npu", o "gpu"
 
+    // Rotación y orientación de sensor de cámara (0: Horizontal, 90: Vertical Der, 180: Invertido, 270: Vertical Izq)
+    #[serde(default, alias = "cameraRotation")]
+    pub camera_rotation: i32,
+
     // Capa Superior de Filtros Cinematográficos / 3D LUTs
     #[serde(default = "default_filter_lut")]
     pub filter_lut: String,
@@ -269,6 +273,12 @@ pub struct StudioConfig {
     pub active_effect: String,
     #[serde(default = "default_effect_intensity", alias = "effectIntensity")]
     pub effect_intensity: f32,
+    #[serde(default = "default_mouth_scale", alias = "mouthScale")]
+    pub mouth_scale: f32,
+    #[serde(default = "default_eyes_scale", alias = "eyesScale")]
+    pub eyes_scale: f32,
+    #[serde(default = "default_eyes_distance", alias = "eyesDistance")]
+    pub eyes_distance: f32,
     #[serde(default)]
     pub base_appearance: BaseAppearanceConfig,
     #[serde(default)]
@@ -299,6 +309,8 @@ pub struct HardwareJsonConfig {
     pub audio_muted: bool,
     pub video_backend: String,
     pub ai_backend: String,
+    #[serde(default)]
+    pub camera_rotation: i32,
     #[serde(default)]
     pub camera_profiles: std::collections::HashMap<String, CameraHardwareProfile>,
 }
@@ -383,6 +395,12 @@ pub struct BeautyJsonConfig {
     pub active_effect: String,
     #[serde(default = "default_effect_intensity", alias = "effectIntensity")]
     pub effect_intensity: f32,
+    #[serde(default = "default_mouth_scale", alias = "mouthScale")]
+    pub mouth_scale: f32,
+    #[serde(default = "default_eyes_scale", alias = "eyesScale")]
+    pub eyes_scale: f32,
+    #[serde(default = "default_eyes_distance", alias = "eyesDistance")]
+    pub eyes_distance: f32,
     #[serde(default)]
     pub base_appearance: BaseAppearanceConfig,
     #[serde(default)]
@@ -451,6 +469,12 @@ pub struct BaseAppearanceConfig {
     pub active_effect: String,
     #[serde(default = "default_effect_intensity", alias = "effectIntensity")]
     pub effect_intensity: f32,
+    #[serde(default = "default_mouth_scale", alias = "mouthScale")]
+    pub mouth_scale: f32,
+    #[serde(default = "default_eyes_scale", alias = "eyesScale")]
+    pub eyes_scale: f32,
+    #[serde(default = "default_eyes_distance", alias = "eyesDistance")]
+    pub eyes_distance: f32,
 }
 
 fn default_smoothing_100() -> f32 { 45.0 }
@@ -473,6 +497,9 @@ fn default_favorite_presets() -> Vec<String> {
 }
 fn default_makeup_intensity() -> f32 { 0.65 }
 fn default_effect_intensity() -> f32 { 1.0 }
+fn default_mouth_scale() -> f32 { 2.2 }
+fn default_eyes_scale() -> f32 { 1.7 }
+fn default_eyes_distance() -> f32 { 1.0 }
 
 impl Default for BaseAppearanceConfig {
     fn default() -> Self {
@@ -507,6 +534,9 @@ impl Default for BaseAppearanceConfig {
             iris_color: "none".to_string(),
             active_effect: "none".to_string(),
             effect_intensity: 1.0,
+            mouth_scale: 2.2,
+            eyes_scale: 1.7,
+            eyes_distance: 1.0,
         }
     }
 }
@@ -526,6 +556,8 @@ pub struct CameraHardwareProfile {
     pub brightness: f32,
     pub color_range: ColorRange,
     pub color_space: ColorSpace,
+    #[serde(default)]
+    pub rotation: i32,
 }
 
 fn default_filter_lut() -> String {
@@ -554,6 +586,10 @@ fn default_backend_cpu() -> String {
 
 impl StudioConfig {
     fn get_exe_dir() -> std::path::PathBuf {
+        let cur = std::path::PathBuf::from(".");
+        if cur.join("camar_beauty.json").exists() || cur.join("camar_presets.json").exists() {
+            return cur;
+        }
         if let Ok(exe_path) = std::env::current_exe() {
             if let Some(parent) = exe_path.parent() {
                 return parent.to_path_buf();
@@ -605,6 +641,9 @@ impl StudioConfig {
         self.base_appearance.iris_color = self.iris_color.clone();
         self.base_appearance.active_effect = self.active_effect.clone();
         self.base_appearance.effect_intensity = self.effect_intensity;
+        self.base_appearance.mouth_scale = self.mouth_scale;
+        self.base_appearance.eyes_scale = self.eyes_scale;
+        self.base_appearance.eyes_distance = self.eyes_distance;
     }
 
     pub fn to_hardware_json(&self) -> HardwareJsonConfig {
@@ -631,6 +670,7 @@ impl StudioConfig {
             audio_muted: self.audio_muted,
             video_backend: self.video_backend.clone(),
             ai_backend: self.ai_backend.clone(),
+            camera_rotation: self.camera_rotation,
             camera_profiles: self.camera_profiles.clone(),
         }
     }
@@ -681,6 +721,9 @@ impl StudioConfig {
             makeup_intensity: self.makeup_intensity,
             active_effect: self.active_effect.clone(),
             effect_intensity: self.effect_intensity,
+            mouth_scale: self.mouth_scale,
+            eyes_scale: self.eyes_scale,
+            eyes_distance: self.eyes_distance,
             base_appearance: self.base_appearance.clone(),
             custom_presets: self.custom_presets.clone(),
         }
@@ -743,6 +786,7 @@ impl StudioConfig {
                     cfg.audio_muted = hw.audio_muted;
                     cfg.video_backend = hw.video_backend;
                     cfg.ai_backend = hw.ai_backend;
+                    cfg.camera_rotation = hw.camera_rotation;
                     cfg.camera_profiles = hw.camera_profiles;
                 }
             }
@@ -754,17 +798,49 @@ impl StudioConfig {
             hardware_updated = true;
         }
 
-        // Si la configuración actual todavía tiene "cpu" pero la máquina cuenta con NPU o GPU dedicada, auto-promover
-        if cfg.video_backend == "cpu" || cfg.ai_backend == "cpu" {
-            let hw_info = crate::hardware::SystemHardwareInfo::detect();
-            if cfg.video_backend == "cpu" && hw_info.has_dedicated_gpu {
-                cfg.video_backend = hw_info.get_optimal_video_backend();
-                hardware_updated = true;
-            }
-            if cfg.ai_backend == "cpu" && (hw_info.has_npu || hw_info.has_dedicated_gpu) {
-                cfg.ai_backend = hw_info.get_optimal_ai_backend();
-                hardware_updated = true;
-            }
+        // Validación rigurosa de Hardware: Detección en tiempo real y cascada obligatoria (NPU -> GPU -> CPU)
+        let hw_info = crate::hardware::SystemHardwareInfo::detect();
+
+        // 1. Validar backend de IA: si no tiene NPU, usar GPU; si no tiene GPU, usar CPU
+        if cfg.ai_backend == "npu" && !hw_info.has_npu {
+            let fallback = if hw_info.has_dedicated_gpu { "gpu".to_string() } else { "cpu".to_string() };
+            crate::log_warn!(
+                "Hardware",
+                "Backend guardado 'npu' no está presente en esta máquina. Cascada automática a '{}'.",
+                fallback
+            );
+            cfg.ai_backend = fallback;
+            hardware_updated = true;
+        } else if cfg.ai_backend == "gpu" && !hw_info.has_dedicated_gpu {
+            crate::log_warn!(
+                "Hardware",
+                "Backend guardado 'gpu' no soportado sin GPU dedicada. Cascada automática a 'cpu'."
+            );
+            cfg.ai_backend = "cpu".to_string();
+            hardware_updated = true;
+        } else if cfg.ai_backend == "cpu" && (hw_info.has_npu || hw_info.has_dedicated_gpu) {
+            // Auto-promover si la máquina tiene NPU o GPU disponible
+            let optimal = hw_info.get_optimal_ai_backend();
+            crate::log_info!(
+                "Hardware",
+                "Hardware acelerado detectado. Promoviendo backend IA a '{}'.",
+                optimal
+            );
+            cfg.ai_backend = optimal;
+            hardware_updated = true;
+        }
+
+        // 2. Validar backend de Video:
+        if cfg.video_backend == "gpu_d3d12" && !hw_info.has_dedicated_gpu {
+            crate::log_warn!(
+                "Hardware",
+                "Aceleración de video 'gpu_d3d12' no soportada sin GPU dedicada. Cascada automática a 'cpu'."
+            );
+            cfg.video_backend = "cpu".to_string();
+            hardware_updated = true;
+        } else if cfg.video_backend == "cpu" && hw_info.has_dedicated_gpu {
+            cfg.video_backend = hw_info.get_optimal_video_backend();
+            hardware_updated = true;
         }
 
         if hardware_updated {
@@ -819,6 +895,9 @@ impl StudioConfig {
                     cfg.makeup_intensity = b.makeup_intensity;
                     cfg.active_effect = b.active_effect;
                     cfg.effect_intensity = b.effect_intensity;
+                    cfg.mouth_scale = b.mouth_scale;
+                    cfg.eyes_scale = b.eyes_scale;
+                    cfg.eyes_distance = b.eyes_distance;
                     cfg.base_appearance = b.base_appearance;
                     cfg.custom_presets = b.custom_presets;
 
@@ -941,6 +1020,7 @@ impl Default for StudioConfig {
             preview_paused: false,
             video_backend: "cpu".to_string(),
             ai_backend: "cpu".to_string(),
+            camera_rotation: 0,
             filter_lut: "none".to_string(),
             filter_intensity: 0.80,
             camera_profiles: std::collections::HashMap::new(),
@@ -949,6 +1029,9 @@ impl Default for StudioConfig {
             makeup_intensity: 0.65,
             active_effect: "none".to_string(),
             effect_intensity: 1.0,
+            mouth_scale: 2.2,
+            eyes_scale: 1.7,
+            eyes_distance: 1.0,
             base_appearance: BaseAppearanceConfig::default(),
             custom_presets: std::collections::HashMap::new(),
         }

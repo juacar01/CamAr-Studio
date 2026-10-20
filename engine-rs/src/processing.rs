@@ -13,12 +13,14 @@ pub mod face_mesh;
 pub mod effects;
 pub mod mesh3d;
 pub mod beard;
+pub mod face_inset;
 
 pub use face_mesh::*;
 #[allow(unused_imports)]
 pub use effects::*;
 pub use mesh3d::*;
 pub use beard::*;
+pub use face_inset::*;
 
 pub use color::*;
 pub use geometry::*;
@@ -188,6 +190,8 @@ impl VideoProcessor {
         self.width = width;
         self.height = height;
         self.output_buffer.resize(width * height * 4, 0);
+        self.face_mesh_renderer.resize(width, height);
+        self.mesh3d_renderer.resize(width, height);
     }
 
     pub fn process_frame(
@@ -1125,6 +1129,23 @@ impl VideoProcessor {
             None
         };
 
+        // Estimación de Parámetros Dinámicos para Boca y Ojos Cómicos (Face Inset)
+        let face_inset_params = if config.active_effect == "big_mouth_eyes" {
+            if let Some(face) = active_face {
+                compute_face_inset_params(
+                    &face.landmarks,
+                    config.mouth_scale,
+                    config.eyes_scale,
+                    config.eyes_distance,
+                    config.effect_intensity,
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         // Renderizado 3D de la Malla Canónica Facial (898 triángulos UV estilo Bigo Live)
         let face_mesh_bounds = if beauty_enabled {
             if let Some(face) = active_face {
@@ -1589,7 +1610,7 @@ impl VideoProcessor {
 
                         // Si el usuario activa el realce de barba, preservar la textura y nitidez de los vellos
                         if beard_enhancement > 0.001 {
-                            let packed = face_uv_map[y * width + x];
+                            let packed = face_uv_map.get(y * width + x).copied().unwrap_or(0);
                             if let Some((u, v, region)) = unpack_face_uv(packed) {
                                 let beard_w = calc_beard_uv_weight(u, v, region);
                                 if beard_w > 0.05 {
@@ -2050,7 +2071,7 @@ impl VideoProcessor {
                         let px_i = eye_sx as usize;
                         let py_i = eye_sy as usize;
                         if px_i >= f_min_x && px_i <= f_max_x && py_i >= f_min_y && py_i <= f_max_y {
-                            let packed = face_uv_map[py_i * width + px_i];
+                            let packed = face_uv_map.get(py_i * width + px_i).copied().unwrap_or(0);
                             if let Some((u, v, region)) = unpack_face_uv(packed) {
                                 // 0. RESALTADO, TINTE Y VISAGISMO DE BARBA (Bigote, Mentón, Mandíbula y Patillas)
                                 if beard_enhancement > 0.001 {
@@ -2574,6 +2595,16 @@ impl VideoProcessor {
                     crate::log_info!("Effects", "Cuernos 3D renderizados: {} píxeles dibujados en búfer {}x{} (yaw={:.2})", drawn_cnt, width, height, pose.yaw_ratio);
                 }
             }
+        }
+
+        // Renderizado de Rasgos Agrandados (Boca y Ojos Cómicos / Face Inset)
+        if let Some(ref inset_params) = face_inset_params {
+            render_face_inset(
+                inset_params,
+                &mut self.output_buffer,
+                width,
+                height,
+            );
         }
 
         (

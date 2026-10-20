@@ -1,0 +1,50 @@
+{
+  "id": "big_mouth_eyes",
+  "name": "Boca Cómica",
+  "author": "CamAr Studio",
+  "version": "1.0.0",
+  "description": "Efecto viral de boca y ojos gigantes con dilatación adaptativa al hablar y gesticular",
+  "category": "Viral Cómico",
+  "thumbnail": "thumb.png",
+  "badge": "Viral Cómico",
+  "badgeColor": "amber",
+  "type": "face_inset",
+  "variables": [
+    {
+      "key": "mouthScale",
+      "label": "Factor Boca (Agrandado)",
+      "min": 1.0,
+      "max": 3.5,
+      "step": 0.1,
+      "default": 2.2,
+      "unit": "x"
+    },
+    {
+      "key": "eyesScale",
+      "label": "Factor Ojos (Agrandado)",
+      "min": 1.0,
+      "max": 3.0,
+      "step": 0.1,
+      "default": 1.7,
+      "unit": "x"
+    },
+    {
+      "key": "eyesDistance",
+      "label": "Separación Ocular",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0,
+      "unit": "x"
+    },
+    {
+      "key": "effectIntensity",
+      "label": "Intensidad / Opacidad",
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.01,
+      "default": 1.0,
+      "unit": "%"
+    }
+  ]
+}

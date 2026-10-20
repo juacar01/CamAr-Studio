@@ -189,6 +189,15 @@ impl IpcServer {
                             if let Some(ei) = v["effectIntensity"].as_f64().or_else(|| v["effect_intensity"].as_f64()) {
                                 cfg.effect_intensity = ei as f32;
                             }
+                            if let Some(ms) = v["mouthScale"].as_f64().or_else(|| v["mouth_scale"].as_f64()) {
+                                cfg.mouth_scale = ms as f32;
+                            }
+                            if let Some(es) = v["eyesScale"].as_f64().or_else(|| v["eyes_scale"].as_f64()) {
+                                cfg.eyes_scale = es as f32;
+                            }
+                            if let Some(ed) = v["eyesDistance"].as_f64().or_else(|| v["eyes_distance"].as_f64()) {
+                                cfg.eyes_distance = ed as f32;
+                            }
 
                             if let Some(bg) = v["bgMode"].as_i64() { cfg.bg_mode = BackgroundMode::from(bg as i32); }
                             if let Some(br) = v["blurRadius"].as_f64() { cfg.blur_radius = br as f32; }
@@ -205,6 +214,10 @@ impl IpcServer {
 
                             if let Some(fl) = v["filterLut"].as_str() { cfg.filter_lut = fl.to_string(); }
                             if let Some(fi) = v["filterIntensity"].as_f64() { cfg.filter_intensity = fi as f32; }
+
+                            if let Some(rot) = v["cameraRotation"].as_i64().or_else(|| v["camera_rotation"].as_i64()) {
+                                cfg.camera_rotation = rot as i32;
+                            }
 
                             // Solo actualizar dimensiones/FPS en UPDATE_CONFIG si corresponden a la cámara actualmente activa
                             let incoming_cam = v["selectedCameraId"].as_str().unwrap_or("");
@@ -270,6 +283,7 @@ impl IpcServer {
                                     brightness: cfg.brightness,
                                     color_range: cfg.color_range,
                                     color_space: cfg.color_space,
+                                    rotation: cfg.camera_rotation,
                                 };
                                 cfg.camera_profiles.insert(cam_key, active_profile);
                             }
@@ -299,6 +313,7 @@ impl IpcServer {
                                         brightness: cfg.brightness,
                                         color_range: cfg.color_range,
                                         color_space: cfg.color_space,
+                                        rotation: cfg.camera_rotation,
                                     };
                                     cfg.camera_profiles.insert(prev_cam_key, prev_profile);
                                 }
@@ -321,6 +336,7 @@ impl IpcServer {
                                     cfg.brightness = prof.brightness;
                                     cfg.color_range = prof.color_range;
                                     cfg.color_space = prof.color_space;
+                                    cfg.camera_rotation = prof.rotation;
                                 } else {
                                     if let Some(w) = v["width"].as_u64() { cfg.selected_width = w as u32; }
                                     if let Some(h) = v["height"].as_u64() { cfg.selected_height = h as u32; }
@@ -335,6 +351,7 @@ impl IpcServer {
                                     cfg.brightness = 0.0;
                                     cfg.color_range = ColorRange::Full;
                                     cfg.color_space = ColorSpace::Rec709;
+                                    cfg.camera_rotation = 0;
                                 }
                             } else {
                                 // Misma cámara: el usuario seleccionó expresamente nueva resolución, FPS o formato!
@@ -359,6 +376,7 @@ impl IpcServer {
                                 brightness: cfg.brightness,
                                 color_range: cfg.color_range,
                                 color_space: cfg.color_space,
+                                rotation: cfg.camera_rotation,
                             };
                             cfg.camera_profiles.insert(new_cam_id, active_profile);
 

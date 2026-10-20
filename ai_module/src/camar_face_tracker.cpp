@@ -171,6 +171,7 @@ struct snapjm_face_tracker {
     Ort::Session *sess_mesh;
     Ort::Session *sess_selfie;
     Ort::MemoryInfo memory_info;
+    std::string current_backend;
 
     // Buffer sizes
     static const int DET_W = 320;
@@ -931,10 +932,20 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire_ex(const char *detector_model
     init_tracker_mutex();
     EnterCriticalSection(&s_tracker_mutex);
 
+    std::string req_backend = (ai_backend && strlen(ai_backend) > 0) ? ai_backend : "cpu";
+
     if (s_shared_tracker != nullptr) {
-        s_tracker_refcount++;
-        LeaveCriticalSection(&s_tracker_mutex);
-        return s_shared_tracker;
+        if (s_shared_tracker->current_backend == req_backend) {
+            s_tracker_refcount++;
+            LeaveCriticalSection(&s_tracker_mutex);
+            return s_shared_tracker;
+        } else {
+            blog(LOG_INFO, "[SnapJM Tracker] Cambio dinámico de backend de '%s' a '%s'. Recreando instancia...",
+                 s_shared_tracker->current_backend.c_str(), req_backend.c_str());
+            delete s_shared_tracker;
+            s_shared_tracker = nullptr;
+            s_tracker_refcount = 0;
+        }
     }
 
     if (!mesh_model_path) {
@@ -943,6 +954,7 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire_ex(const char *detector_model
     }
 
     snapjm_face_tracker *tracker = new snapjm_face_tracker();
+    tracker->current_backend = req_backend;
     try {
         // Dedicated low-latency CPU session options
         Ort::SessionOptions session_options_cpu;
@@ -953,20 +965,23 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire_ex(const char *detector_model
         Ort::SessionOptions session_options_dml;
         session_options_dml.SetIntraOpNumThreads(2);
         session_options_dml.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+        bool is_cpu_only = (!ai_backend || strcmp(ai_backend, "cpu") == 0);
         bool dml_ok = false;
-        try {
-            OrtSessionOptionsAppendExecutionProvider_DML(session_options_dml, 0);
-            blog(LOG_INFO, "[SnapJM Tracker] DirectML GPU Execution Provider activado (Device 0).");
-            dml_ok = true;
-        } catch (...) {
-            blog(LOG_WARNING, "[SnapJM Tracker] DirectML no disponible, continuando en CPU.");
+        if (!is_cpu_only) {
+            try {
+                OrtSessionOptionsAppendExecutionProvider_DML(session_options_dml, 0);
+                blog(LOG_INFO, "[SnapJM Tracker] DirectML GPU Execution Provider activado (Device 0).");
+                dml_ok = true;
+            } catch (...) {
+                blog(LOG_WARNING, "[SnapJM Tracker] DirectML no disponible, continuando en CPU.");
+            }
         }
 
         // Selección de backend para FaceMesh según ai_backend ("npu", "gpu", "cpu")
         Ort::SessionOptions session_options_npu;
         Ort::SessionOptions *p_session_options_mesh = &session_options_cpu;
 
-        if (ai_backend && strcmp(ai_backend, "npu") == 0) {
+        if (!is_cpu_only && ai_backend && strcmp(ai_backend, "npu") == 0) {
             bool npu_ok = false;
             try {
                 // Device 1 corresponde al acelerador de cómputo / NPU Intel AI Boost en DirectML
@@ -979,15 +994,22 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire_ex(const char *detector_model
             } catch (...) {
                 blog(LOG_WARNING, "[SnapJM Tracker] NPU Device 1 no disponible, usando aceleración GPU DirectML.");
             }
-            if (!npu_ok && dml_ok) {
-                p_session_options_mesh = &session_options_dml;
+            if (!npu_ok) {
+                if (dml_ok) {
+                    p_session_options_mesh = &session_options_dml;
+                } else {
+                    p_session_options_mesh = &session_options_cpu;
+                }
             }
-        } else if (ai_backend && strcmp(ai_backend, "gpu") == 0) {
+        } else if (!is_cpu_only && ai_backend && strcmp(ai_backend, "gpu") == 0) {
             if (dml_ok) {
                 p_session_options_mesh = &session_options_dml;
                 blog(LOG_INFO, "[SnapJM Tracker] Inferencia GPU activada para FaceMesh (Tensor Cores / DirectML).");
+            } else {
+                p_session_options_mesh = &session_options_cpu;
             }
         } else {
+            p_session_options_mesh = &session_options_cpu;
             blog(LOG_INFO, "[SnapJM Tracker] Inferencia CPU AVX2 multihilo activada para FaceMesh.");
         }
 
@@ -1008,34 +1030,47 @@ snapjm_face_tracker_t *snapjm_face_tracker_acquire_ex(const char *detector_model
                 tracker->sess_mesh = new Ort::Session(tracker->env, wpath.c_str(), *p_session_options_mesh);
             } catch (...) {
                 blog(LOG_WARNING, "[SnapJM Tracker] Error al crear sesión acelerada FaceMesh, fallback seguro a CPU.");
-                tracker->sess_mesh = new Ort::Session(tracker->env, wpath.c_str(), session_options_cpu);
+                try {
+                    tracker->sess_mesh = new Ort::Session(tracker->env, wpath.c_str(), session_options_cpu);
+                } catch (...) {
+                    tracker->sess_mesh = nullptr;
+                }
             }
         }
 
-        // 3. Load Selfie Segmentation (Asynchronous Background GPU DirectML)
+        // 3. Load Selfie Segmentation (Asynchronous Background GPU DirectML con fallback seguro a CPU)
         if (selfie_model_path) {
             int wlen = MultiByteToWideChar(CP_UTF8, 0, selfie_model_path, -1, NULL, 0);
             std::wstring wpath(wlen, 0);
             MultiByteToWideChar(CP_UTF8, 0, selfie_model_path, -1, &wpath[0], wlen);
+            Ort::SessionOptions *p_selfie_opt = (dml_ok && !is_cpu_only) ? &session_options_dml : &session_options_cpu;
             try {
-                tracker->sess_selfie = new Ort::Session(tracker->env, wpath.c_str(), session_options_dml);
+                tracker->sess_selfie = new Ort::Session(tracker->env, wpath.c_str(), *p_selfie_opt);
             } catch (...) {
-                tracker->sess_selfie = new Ort::Session(tracker->env, wpath.c_str(), session_options_cpu);
+                try {
+                    tracker->sess_selfie = new Ort::Session(tracker->env, wpath.c_str(), session_options_cpu);
+                } catch (...) {
+                    tracker->sess_selfie = nullptr;
+                }
             }
 
-            Ort::AllocatorWithDefaultOptions alloc;
-            auto in_name = tracker->sess_selfie->GetInputNameAllocated(0, alloc);
-            auto out_name = tracker->sess_selfie->GetOutputNameAllocated(0, alloc);
-            tracker->seg_input_name = in_name.get();
-            tracker->seg_output_name = out_name.get();
+            if (tracker->sess_selfie) {
+                Ort::AllocatorWithDefaultOptions alloc;
+                auto in_name = tracker->sess_selfie->GetInputNameAllocated(0, alloc);
+                auto out_name = tracker->sess_selfie->GetOutputNameAllocated(0, alloc);
+                tracker->seg_input_name = in_name.get();
+                tracker->seg_output_name = out_name.get();
 
-            auto out_type_info = tracker->sess_selfie->GetOutputTypeInfo(0);
-            auto tensor_info = out_type_info.GetTensorTypeAndShapeInfo();
-            auto shape = tensor_info.GetShape();
-            tracker->seg_is_multiclass = (shape.size() >= 4 && shape[3] == 6);
-            blog(LOG_INFO, "[SnapJM Tracker] Segmenter cargado: '%s' (Multiclass=%d, In='%s', Out='%s')",
-                 selfie_model_path, tracker->seg_is_multiclass ? 1 : 0,
-                 tracker->seg_input_name.c_str(), tracker->seg_output_name.c_str());
+                auto out_type_info = tracker->sess_selfie->GetOutputTypeInfo(0);
+                auto tensor_info = out_type_info.GetTensorTypeAndShapeInfo();
+                auto shape = tensor_info.GetShape();
+                tracker->seg_is_multiclass = (shape.size() >= 4 && shape[3] == 6);
+                blog(LOG_INFO, "[SnapJM Tracker] Segmenter cargado: '%s' (Multiclass=%d, In='%s', Out='%s')",
+                     selfie_model_path, tracker->seg_is_multiclass ? 1 : 0,
+                     tracker->seg_input_name.c_str(), tracker->seg_output_name.c_str());
+            } else {
+                blog(LOG_WARNING, "[SnapJM Tracker] No se pudo cargar el modelo de segmentacion selfie: '%s'", selfie_model_path);
+            }
         }
 
         tracker->event_stop = CreateEvent(NULL, TRUE, FALSE, NULL);

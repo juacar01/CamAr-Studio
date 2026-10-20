@@ -19,7 +19,7 @@ import {
   Plus,
   Save,
 } from 'lucide-react';
-import type { EffectState, EngineTelemetry, MakeupPresetItem, MakeupPresetConfig, BaseAppearanceState } from '../types';
+import type { EffectState, EngineTelemetry, MakeupPresetItem, MakeupPresetConfig, BaseAppearanceState, InstalledEffectItem } from '../types';
 import { engineClient } from '../services/wsClient';
 
 interface EffectsSidebarProps {
@@ -178,6 +178,74 @@ export const FILTER_LUTS: FilterLutItem[] = [
   { id: 'vin_cyberpunk', name: 'Cyber 80s', category: 'vintage', desc: 'Crominancia ochentera de sombras turquesa y luces fucsia', gradient: 'linear-gradient(135deg, #00e5ff 0%, #d500f9 100%)' },
 ];
 
+export const DEFAULT_INSTALLED_EFFECTS: InstalledEffectItem[] = [
+  {
+    id: 'devil_horns',
+    name: 'Cuernos Diablo',
+    category: 'Halloween 3D',
+    thumb: '/effects/devil_horns/thumb.png',
+    badge: 'Halloween',
+    badgeColor: 'red',
+    variables: [
+      {
+        key: 'effectIntensity',
+        label: 'Opacidad del Accesorio',
+        min: 0.0,
+        max: 1.0,
+        step: 0.01,
+        default: 1.0,
+        unit: '%',
+      },
+    ],
+  },
+  {
+    id: 'big_mouth_eyes',
+    name: 'Boca Cómica',
+    category: 'Viral Cómico',
+    thumb: '/effects/funny_big_mouth/thumb.png',
+    badge: 'Viral Cómico',
+    badgeColor: 'amber',
+    variables: [
+      {
+        key: 'mouthScale',
+        label: 'Factor Boca (Agrandado)',
+        min: 1.0,
+        max: 3.5,
+        step: 0.1,
+        default: 2.2,
+        unit: 'x',
+      },
+      {
+        key: 'eyesScale',
+        label: 'Factor Ojos (Agrandado)',
+        min: 1.0,
+        max: 3.0,
+        step: 0.1,
+        default: 1.7,
+        unit: 'x',
+      },
+      {
+        key: 'eyesDistance',
+        label: 'Separación Ocular',
+        min: 0.6,
+        max: 1.6,
+        step: 0.05,
+        default: 1.0,
+        unit: 'x',
+      },
+      {
+        key: 'effectIntensity',
+        label: 'Intensidad / Opacidad',
+        min: 0.0,
+        max: 1.0,
+        step: 0.01,
+        default: 1.0,
+        unit: '%',
+      },
+    ],
+  },
+];
+
 export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
   effects,
   telemetry: _telemetry,
@@ -191,7 +259,21 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
   const [subTab, setSubTab] = useState<'apariencia' | 'maquillaje' | 'cuerpo'>('apariencia');
 
   // Filtro conceptual dentro de "Apariencia"
-  const [appearanceFilter, setAppearanceFilter] = useState<'todos' | 'ojos' | 'labios' | 'rostro'>('todos');
+  const [appearanceFilter, setAppearanceFilter] = useState<'todos' | 'rostro' | 'labios' | 'ojos'>('todos');
+
+  // Listado dinámico de Efectos / Accesorios instalados (Cargados desde installed_effects.json)
+  const [installedEffects, setInstalledEffects] = useState<InstalledEffectItem[]>(DEFAULT_INSTALLED_EFFECTS);
+
+  useEffect(() => {
+    fetch('/effects/installed_effects.json')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setInstalledEffects(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const DEFAULT_BASE_APPEARANCE: BaseAppearanceState = {
     beautyEnabled: true,
@@ -789,13 +871,13 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
                   <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#17171b] border border-neutral-800/80 rounded-xl">
                     {[
                       { id: 'todos', label: 'Todo' },
-                      { id: 'ojos', label: '👁️ Ojos' },
-                      { id: 'labios', label: '💋 Labios' },
                       { id: 'rostro', label: '✨ Rostro' },
+                      { id: 'labios', label: '💋 Boca' },
+                      { id: 'ojos', label: '👁️ Ojos' },
                     ].map((tab) => (
                       <button
                         key={tab.id}
-                        onClick={() => setAppearanceFilter(tab.id as 'todos' | 'ojos' | 'labios' | 'rostro')}
+                        onClick={() => setAppearanceFilter(tab.id as 'todos' | 'rostro' | 'labios' | 'ojos')}
                         className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all ${
                           appearanceFilter === tab.id
                             ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 shadow-sm'
@@ -808,7 +890,402 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
                   </div>
 
                   {/* ========================================================= */}
-                  {/* GRUPO 1: OJOS & MIRADA (Pupilentes, Pestañas, Geometría)  */}
+                  {/* GRUPO 1: PIEL & ESCULTURA FACIAL                          */}
+                  {/* ========================================================= */}
+                  {(appearanceFilter === 'todos' || appearanceFilter === 'rostro') && (
+                    <div className="p-3.5 rounded-2xl bg-[#17171b]/90 border border-neutral-800/90 space-y-3.5 shadow-inner">
+                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-6 h-6 rounded-lg bg-amber-400/15 border border-amber-400/30 flex items-center justify-center">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          </div>
+                          <div>
+                            <h3 className="text-xs font-bold text-neutral-100 tracking-wide">Piel & Escultura Facial</h3>
+                            <p className="text-[10px] text-neutral-400">Porcelana, base de maquillaje y facciones</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 3.1 Suavizar piel */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <Droplet className="w-3.5 h-3.5 text-neutral-300" />
+                            <span>Suavizar piel</span>
+                          </span>
+                          <span className="font-mono text-neutral-300">{baseAppearance.skinSmoothing}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.skinSmoothing}
+                          onChange={(e) => updateBaseAppearance({ skinSmoothing: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
+                        />
+                      </div>
+
+                      {/* 3.2 Aclarar piel */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                            <span>Aclarar piel (Porcelana)</span>
+                          </span>
+                          <span className="font-mono text-amber-300">{baseAppearance.skinWhitening || 0}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.skinWhitening || 0}
+                          onChange={(e) => updateBaseAppearance({ skinWhitening: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-amber-300"
+                        />
+                      </div>
+
+                      {/* 3.3 Base / Tez */}
+                      <div className="space-y-2 pt-1 border-t border-neutral-800/60">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="8" />
+                              <path d="M12 8v8M8 12h8" />
+                            </svg>
+                            <span>Base / Tez</span>
+                          </span>
+                          <span className="text-[11px] text-neutral-400">
+                            {SKIN_TONES.find((t) => t.id === baseAppearance.foundationTone)?.label || 'Sin base'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center space-x-2.5 overflow-x-auto py-1 no-scrollbar">
+                          {SKIN_TONES.map((tone) => (
+                            <button
+                              key={tone.id}
+                              onClick={() => updateBaseAppearance({ foundationTone: tone.id })}
+                              className={`w-7 h-7 rounded-full shrink-0 transition-transform relative flex items-center justify-center ${
+                                baseAppearance.foundationTone === tone.id ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#121214]' : 'opacity-85 hover:opacity-100'
+                              }`}
+                              style={{ backgroundColor: tone.color }}
+                              title={tone.label}
+                            >
+                              {tone.isNone && (
+                                <div className="w-full h-full rounded-full border border-neutral-500 flex items-center justify-center text-neutral-400">
+                                  <span className="text-base font-light">⊘</span>
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+
+                        {baseAppearance.foundationTone !== 'none' && (
+                          <div className="space-y-1.5 pt-1 pl-0.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-neutral-400 text-xs">Intensidad de base</span>
+                              <span className="font-mono text-neutral-300">{baseAppearance.foundationIntensity ?? 40}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={baseAppearance.foundationIntensity ?? 40}
+                              onChange={(e) => updateBaseAppearance({ foundationIntensity: Number(e.target.value) })}
+                              className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 3.4 Contorno Facial */}
+                      <div className="space-y-1.5 pt-1 border-t border-neutral-800/60">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="m14 12 3 3-9 9H5v-3l9-9Z" />
+                              <path d="M19 10l-2-2 2-2 2 2-2 2Z" />
+                              <path d="m18 7 3-3" />
+                            </svg>
+                            <span>Contorno & Rubor</span>
+                          </span>
+                          <span className="font-mono text-neutral-300">{baseAppearance.contour}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.contour}
+                          onChange={(e) => updateBaseAppearance({ contour: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
+                        />
+                      </div>
+
+                      {/* 3.45 Realce y Tinte de Barba */}
+                      <div className="space-y-2 pt-2 border-t border-neutral-800/60">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 10c0 5 3 10 8 10s8-5 8-10" />
+                              <path d="M8 14c1 2 2.5 3 4 3s3-1 4-3" />
+                              <path d="M9 10h.01M15 10h.01" />
+                            </svg>
+                            <span>Barba & Visagismo</span>
+                          </span>
+                          <span className="font-mono text-neutral-300">{baseAppearance.beardEnhancement ?? 0}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.beardEnhancement ?? 0}
+                          onChange={(e) => updateBaseAppearance({ beardEnhancement: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-amber-400"
+                        />
+                        {(baseAppearance.beardEnhancement ?? 0) > 0 && (
+                          <div className="pt-1.5 space-y-1.5">
+                            <span className="text-[10px] text-neutral-400 font-medium">Tono de barba y cobertura de canas</span>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {BEARD_COLORS.map((bColor) => {
+                                const isSelected = (baseAppearance.beardColor || 'natural') === bColor.id;
+                                return (
+                                  <button
+                                    key={bColor.id}
+                                    type="button"
+                                    onClick={() => updateBaseAppearance({ beardColor: bColor.id })}
+                                    className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-[11px] border transition-all ${
+                                      isSelected
+                                        ? 'bg-amber-400/15 border-amber-400/60 text-amber-200 shadow-sm'
+                                        : 'bg-[#1b1b1f] border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                                    }`}
+                                  >
+                                    <div
+                                      className="w-3 h-3 rounded-full border border-neutral-600 flex-shrink-0"
+                                      style={{ backgroundColor: bColor.color }}
+                                    />
+                                    <span className="truncate">{bColor.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 3.5 Forma (V-Line) */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M7 10c0 4 2.5 7 5 7s5-3 5-7" />
+                              <path d="M9 7h.01M15 7h.01" />
+                            </svg>
+                            <span>Forma facial (V-Line)</span>
+                          </span>
+                          <span className="font-mono text-neutral-300">{baseAppearance.faceSlim}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.faceSlim}
+                          onChange={(e) => updateBaseAppearance({ faceSlim: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
+                        />
+                      </div>
+
+                      {/* 3.6 Nariz */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M10 6v7a2 2 0 0 0 4 0V6" />
+                              <path d="M8 17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2" />
+                            </svg>
+                            <span>Afinar nariz</span>
+                          </span>
+                          <span className="font-mono text-neutral-300">{baseAppearance.noseSlim}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={baseAppearance.noseSlim}
+                          onChange={(e) => updateBaseAppearance({ noseSlim: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
+                        />
+                      </div>
+
+                      {/* 3.7 Elevar cejas */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 14c3-3 7-3 10 0" />
+                              <path d="M11 9l-2-2m0 0L7 9m2-2v6" />
+                            </svg>
+                            <span>Elevar cejas</span>
+                          </span>
+                          <span className="font-mono text-neutral-300">{baseAppearance.browLift}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.browLift}
+                          onChange={(e) => updateBaseAppearance({ browLift: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {/* ========================================================= */}
+                  {/* GRUPO 2: BOCA & SONRISA (Sprite Labial Color + Volumen) */}
+                  {/* ========================================================= */}
+                  {(appearanceFilter === 'todos' || appearanceFilter === 'labios') && (
+                    <div className="p-3.5 rounded-2xl bg-[#17171b]/90 border border-neutral-800/90 space-y-3.5 shadow-inner">
+                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-6 h-6 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center">
+                            <svg className="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 12c3-2 5-1 8-1s5-1 8 1c-3 4-5 5-8 5s-5-1-8-5z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-xs font-bold text-neutral-100 tracking-wide">Boca & Sonrisa</h3>
+                            <p className="text-[10px] text-neutral-400">Sprite labial deformable, tono y volumen</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20">
+                          {LIPSTICK_COLORS.find((c) => c.id === (baseAppearance.lipstickColor || 'rose_natural'))?.label.split(' ')[0] || 'Rosa'}
+                        </span>
+                      </div>
+
+                      {/* 2.1 Selector de Color de Labial (Sprite Deformable) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <Palette className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Tono de Labial (Sprite)</span>
+                          </span>
+                          <span className="text-[11px] text-neutral-400">
+                            {LIPSTICK_COLORS.find((c) => c.id === (baseAppearance.lipstickColor || 'rose_natural'))?.label || 'Rosa Terciopelo'}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 overflow-x-auto py-1 no-scrollbar">
+                          {LIPSTICK_COLORS.map((tone) => {
+                            const currentColor = baseAppearance.lipstick === 0 && baseAppearance.lipstickColor === 'none'
+                              ? 'none'
+                              : (baseAppearance.lipstickColor || 'rose_natural');
+                            const isSelected = currentColor === tone.id;
+                            if (tone.isNone) {
+                              return (
+                                <button
+                                  key={tone.id}
+                                  onClick={() => updateBaseAppearance({ lipstickColor: 'none', lipstick: 0 })}
+                                  className={`w-7 h-7 rounded-full border border-neutral-600 shrink-0 flex items-center justify-center transition-all ${
+                                    isSelected ? 'ring-2 ring-rose-400 scale-110 bg-neutral-800' : 'opacity-70 hover:opacity-100'
+                                  }`}
+                                  title="Sin labial (Natural)"
+                                >
+                                  <span className="text-xs text-neutral-400">⊘</span>
+                                </button>
+                              );
+                            }
+                            return (
+                              <button
+                                key={tone.id}
+                                onClick={() =>
+                                  updateBaseAppearance({
+                                    lipstickColor: tone.id,
+                                    lipstick: (baseAppearance.lipstick || 0) === 0 ? 55 : baseAppearance.lipstick,
+                                  })
+                                }
+                                style={{ backgroundColor: tone.color }}
+                                className={`w-7 h-7 rounded-full shrink-0 transition-transform ${
+                                  isSelected ? 'ring-2 ring-rose-400 scale-110 shadow-lg' : 'opacity-85 hover:opacity-100'
+                                }`}
+                                title={tone.label}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* 2.2 Intensidad de Labial (Alpha) */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M10 14h4v7h-4zM10 8h4v6h-4zM11 3h2l1 5h-4z" />
+                            </svg>
+                            <span>Intensidad de labial (Alpha)</span>
+                          </span>
+                          <span className="font-mono text-rose-300">{baseAppearance.lipstick}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.lipstick}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            updateBaseAppearance({
+                              lipstick: val,
+                              lipstickColor:
+                                val > 0 && (!baseAppearance.lipstickColor || baseAppearance.lipstickColor === 'none')
+                                  ? 'rose_natural'
+                                  : baseAppearance.lipstickColor,
+                            });
+                          }}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-rose-400"
+                        />
+                      </div>
+
+                      {/* 2.3 Volumen de Labios (Plump) */}
+                      <div className="space-y-1.5 pt-1 border-t border-neutral-800/60">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 12c3-2 5-1 8-1s5-1 8 1c-3 4-5 5-8 5s-5-1-8-5z" />
+                            </svg>
+                            <span>Volumen de labios (Plump)</span>
+                          </span>
+                          <span className="font-mono text-neutral-300">{baseAppearance.lipPlump}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.lipPlump}
+                          onChange={(e) => updateBaseAppearance({ lipPlump: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
+                        />
+                      </div>
+
+                      {/* 2.4 Blanqueamiento de Dientes */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
+                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M7 6c0 5 1 12 3 12s2-4 2-6 0-6 2-6 2 4 2 6 1 6 3 6 3-7 3-12a5 5 0 0 0-15 0z" />
+                            </svg>
+                            <span>Blanquear dientes</span>
+                          </span>
+                          <span className="font-mono text-neutral-300">{baseAppearance.teethWhitening}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={baseAppearance.teethWhitening}
+                          onChange={(e) => updateBaseAppearance({ teethWhitening: Number(e.target.value) })}
+                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {/* ========================================================= */}
+                  {/* GRUPO 3: OJOS & MIRADA (Pupilentes, Pestañas, Geometría)  */}
                   {/* ========================================================= */}
                   {(appearanceFilter === 'todos' || appearanceFilter === 'ojos') && (
                     <div className="p-3.5 rounded-2xl bg-[#17171b]/90 border border-neutral-800/90 space-y-3.5 shadow-inner">
@@ -1244,402 +1721,7 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
                     </div>
                   )}
 
-                  {/* ========================================================= */}
-                  {/* GRUPO 2: LABIOS & SONRISA (Sprite Labial Color + Volumen) */}
-                  {/* ========================================================= */}
-                  {(appearanceFilter === 'todos' || appearanceFilter === 'labios') && (
-                    <div className="p-3.5 rounded-2xl bg-[#17171b]/90 border border-neutral-800/90 space-y-3.5 shadow-inner">
-                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-6 h-6 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center">
-                            <svg className="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M4 12c3-2 5-1 8-1s5-1 8 1c-3 4-5 5-8 5s-5-1-8-5z" />
-                            </svg>
-                          </div>
-                          <div>
-                            <h3 className="text-xs font-bold text-neutral-100 tracking-wide">Labios & Sonrisa</h3>
-                            <p className="text-[10px] text-neutral-400">Sprite labial deformable, tono y volumen</p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20">
-                          {LIPSTICK_COLORS.find((c) => c.id === (baseAppearance.lipstickColor || 'rose_natural'))?.label.split(' ')[0] || 'Rosa'}
-                        </span>
-                      </div>
 
-                      {/* 2.1 Selector de Color de Labial (Sprite Deformable) */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <Palette className="w-3.5 h-3.5 text-rose-400" />
-                            <span>Tono de Labial (Sprite)</span>
-                          </span>
-                          <span className="text-[11px] text-neutral-400">
-                            {LIPSTICK_COLORS.find((c) => c.id === (baseAppearance.lipstickColor || 'rose_natural'))?.label || 'Rosa Terciopelo'}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2 overflow-x-auto py-1 no-scrollbar">
-                          {LIPSTICK_COLORS.map((tone) => {
-                            const currentColor = baseAppearance.lipstick === 0 && baseAppearance.lipstickColor === 'none'
-                              ? 'none'
-                              : (baseAppearance.lipstickColor || 'rose_natural');
-                            const isSelected = currentColor === tone.id;
-                            if (tone.isNone) {
-                              return (
-                                <button
-                                  key={tone.id}
-                                  onClick={() => updateBaseAppearance({ lipstickColor: 'none', lipstick: 0 })}
-                                  className={`w-7 h-7 rounded-full border border-neutral-600 shrink-0 flex items-center justify-center transition-all ${
-                                    isSelected ? 'ring-2 ring-rose-400 scale-110 bg-neutral-800' : 'opacity-70 hover:opacity-100'
-                                  }`}
-                                  title="Sin labial (Natural)"
-                                >
-                                  <span className="text-xs text-neutral-400">⊘</span>
-                                </button>
-                              );
-                            }
-                            return (
-                              <button
-                                key={tone.id}
-                                onClick={() =>
-                                  updateBaseAppearance({
-                                    lipstickColor: tone.id,
-                                    lipstick: (baseAppearance.lipstick || 0) === 0 ? 55 : baseAppearance.lipstick,
-                                  })
-                                }
-                                style={{ backgroundColor: tone.color }}
-                                className={`w-7 h-7 rounded-full shrink-0 transition-transform ${
-                                  isSelected ? 'ring-2 ring-rose-400 scale-110 shadow-lg' : 'opacity-85 hover:opacity-100'
-                                }`}
-                                title={tone.label}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* 2.2 Intensidad de Labial (Alpha) */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M10 14h4v7h-4zM10 8h4v6h-4zM11 3h2l1 5h-4z" />
-                            </svg>
-                            <span>Intensidad de labial (Alpha)</span>
-                          </span>
-                          <span className="font-mono text-rose-300">{baseAppearance.lipstick}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.lipstick}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            updateBaseAppearance({
-                              lipstick: val,
-                              lipstickColor:
-                                val > 0 && (!baseAppearance.lipstickColor || baseAppearance.lipstickColor === 'none')
-                                  ? 'rose_natural'
-                                  : baseAppearance.lipstickColor,
-                            });
-                          }}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-rose-400"
-                        />
-                      </div>
-
-                      {/* 2.3 Volumen de Labios (Plump) */}
-                      <div className="space-y-1.5 pt-1 border-t border-neutral-800/60">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M4 12c3-2 5-1 8-1s5-1 8 1c-3 4-5 5-8 5s-5-1-8-5z" />
-                            </svg>
-                            <span>Volumen de labios (Plump)</span>
-                          </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.lipPlump}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.lipPlump}
-                          onChange={(e) => updateBaseAppearance({ lipPlump: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                        />
-                      </div>
-
-                      {/* 2.4 Blanqueamiento de Dientes */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M7 6c0 5 1 12 3 12s2-4 2-6 0-6 2-6 2 4 2 6 1 6 3 6 3-7 3-12a5 5 0 0 0-15 0z" />
-                            </svg>
-                            <span>Blanquear dientes</span>
-                          </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.teethWhitening}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.teethWhitening}
-                          onChange={(e) => updateBaseAppearance({ teethWhitening: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ========================================================= */}
-                  {/* GRUPO 3: PIEL & ESCULTURA FACIAL                          */}
-                  {/* ========================================================= */}
-                  {(appearanceFilter === 'todos' || appearanceFilter === 'rostro') && (
-                    <div className="p-3.5 rounded-2xl bg-[#17171b]/90 border border-neutral-800/90 space-y-3.5 shadow-inner">
-                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-6 h-6 rounded-lg bg-amber-400/15 border border-amber-400/30 flex items-center justify-center">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                          </div>
-                          <div>
-                            <h3 className="text-xs font-bold text-neutral-100 tracking-wide">Piel & Escultura Facial</h3>
-                            <p className="text-[10px] text-neutral-400">Porcelana, base de maquillaje y facciones</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 3.1 Suavizar piel */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <Droplet className="w-3.5 h-3.5 text-neutral-300" />
-                            <span>Suavizar piel</span>
-                          </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.skinSmoothing}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.skinSmoothing}
-                          onChange={(e) => updateBaseAppearance({ skinSmoothing: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                        />
-                      </div>
-
-                      {/* 3.2 Aclarar piel */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                            <span>Aclarar piel (Porcelana)</span>
-                          </span>
-                          <span className="font-mono text-amber-300">{baseAppearance.skinWhitening || 0}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.skinWhitening || 0}
-                          onChange={(e) => updateBaseAppearance({ skinWhitening: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-amber-300"
-                        />
-                      </div>
-
-                      {/* 3.3 Base / Tez */}
-                      <div className="space-y-2 pt-1 border-t border-neutral-800/60">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <circle cx="12" cy="12" r="8" />
-                              <path d="M12 8v8M8 12h8" />
-                            </svg>
-                            <span>Base / Tez</span>
-                          </span>
-                          <span className="text-[11px] text-neutral-400">
-                            {SKIN_TONES.find((t) => t.id === baseAppearance.foundationTone)?.label || 'Sin base'}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center space-x-2.5 overflow-x-auto py-1 no-scrollbar">
-                          {SKIN_TONES.map((tone) => (
-                            <button
-                              key={tone.id}
-                              onClick={() => updateBaseAppearance({ foundationTone: tone.id })}
-                              className={`w-7 h-7 rounded-full shrink-0 transition-transform relative flex items-center justify-center ${
-                                baseAppearance.foundationTone === tone.id ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#121214]' : 'opacity-85 hover:opacity-100'
-                              }`}
-                              style={{ backgroundColor: tone.color }}
-                              title={tone.label}
-                            >
-                              {tone.isNone && (
-                                <div className="w-full h-full rounded-full border border-neutral-500 flex items-center justify-center text-neutral-400">
-                                  <span className="text-base font-light">⊘</span>
-                                </div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-
-                        {baseAppearance.foundationTone !== 'none' && (
-                          <div className="space-y-1.5 pt-1 pl-0.5">
-                            <div className="flex items-center justify-between">
-                              <span className="text-neutral-400 text-xs">Intensidad de base</span>
-                              <span className="font-mono text-neutral-300">{baseAppearance.foundationIntensity ?? 40}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={baseAppearance.foundationIntensity ?? 40}
-                              onChange={(e) => updateBaseAppearance({ foundationIntensity: Number(e.target.value) })}
-                              className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 3.4 Contorno Facial */}
-                      <div className="space-y-1.5 pt-1 border-t border-neutral-800/60">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="m14 12 3 3-9 9H5v-3l9-9Z" />
-                              <path d="M19 10l-2-2 2-2 2 2-2 2Z" />
-                              <path d="m18 7 3-3" />
-                            </svg>
-                            <span>Contorno & Rubor</span>
-                          </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.contour}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.contour}
-                          onChange={(e) => updateBaseAppearance({ contour: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                        />
-                      </div>
-
-                      {/* 3.45 Realce y Tinte de Barba */}
-                      <div className="space-y-2 pt-2 border-t border-neutral-800/60">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M4 10c0 5 3 10 8 10s8-5 8-10" />
-                              <path d="M8 14c1 2 2.5 3 4 3s3-1 4-3" />
-                              <path d="M9 10h.01M15 10h.01" />
-                            </svg>
-                            <span>Barba & Visagismo</span>
-                          </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.beardEnhancement ?? 0}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.beardEnhancement ?? 0}
-                          onChange={(e) => updateBaseAppearance({ beardEnhancement: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-amber-400"
-                        />
-                        {(baseAppearance.beardEnhancement ?? 0) > 0 && (
-                          <div className="pt-1.5 space-y-1.5">
-                            <span className="text-[10px] text-neutral-400 font-medium">Tono de barba y cobertura de canas</span>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {BEARD_COLORS.map((bColor) => {
-                                const isSelected = (baseAppearance.beardColor || 'natural') === bColor.id;
-                                return (
-                                  <button
-                                    key={bColor.id}
-                                    type="button"
-                                    onClick={() => updateBaseAppearance({ beardColor: bColor.id })}
-                                    className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-[11px] border transition-all ${
-                                      isSelected
-                                        ? 'bg-amber-400/15 border-amber-400/60 text-amber-200 shadow-sm'
-                                        : 'bg-[#1b1b1f] border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
-                                    }`}
-                                  >
-                                    <div
-                                      className="w-3 h-3 rounded-full border border-neutral-600 flex-shrink-0"
-                                      style={{ backgroundColor: bColor.color }}
-                                    />
-                                    <span className="truncate">{bColor.label}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 3.5 Forma (V-Line) */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M7 10c0 4 2.5 7 5 7s5-3 5-7" />
-                              <path d="M9 7h.01M15 7h.01" />
-                            </svg>
-                            <span>Forma facial (V-Line)</span>
-                          </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.faceSlim}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.faceSlim}
-                          onChange={(e) => updateBaseAppearance({ faceSlim: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                        />
-                      </div>
-
-                      {/* 3.6 Nariz */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M10 6v7a2 2 0 0 0 4 0V6" />
-                              <path d="M8 17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2" />
-                            </svg>
-                            <span>Afinar nariz</span>
-                          </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.noseSlim}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="-50"
-                          max="50"
-                          value={baseAppearance.noseSlim}
-                          onChange={(e) => updateBaseAppearance({ noseSlim: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                        />
-                      </div>
-
-                      {/* 3.7 Elevar cejas */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center space-x-2 text-neutral-200 font-medium">
-                            <svg className="w-3.5 h-3.5 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M4 14c3-3 7-3 10 0" />
-                              <path d="M11 9l-2-2m0 0L7 9m2-2v6" />
-                            </svg>
-                            <span>Elevar cejas</span>
-                          </span>
-                          <span className="font-mono text-neutral-300">{baseAppearance.browLift}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={baseAppearance.browLift}
-                          onChange={(e) => updateBaseAppearance({ browLift: Number(e.target.value) })}
-                          className="w-full h-1 bg-[#28282c] rounded-lg appearance-none cursor-pointer accent-white"
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -2485,7 +2567,7 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
 
           {/* Grid de Efectos y Accesorios */}
           <div className="grid grid-cols-2 gap-2.5">
-            {/* Opción 1: Ninguno (Sin Efecto) */}
+            {/* Botón 1: Ninguno (Sin Efecto) */}
             <button
               onClick={() => onChange({ ...effects, activeEffect: 'none' })}
               className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
@@ -2501,54 +2583,102 @@ export const EffectsSidebar: React.FC<EffectsSidebarProps> = ({
               <span className="text-[10px] text-neutral-500 mt-0.5">Sin accesorios</span>
             </button>
 
-            {/* Opción 2: Cuernos de Diablo (Halloween) */}
-            <button
-              onClick={() =>
-                onChange({
-                  ...effects,
-                  activeEffect: effects.activeEffect === 'devil_horns' ? 'none' : 'devil_horns',
-                  effectIntensity: effects.effectIntensity ?? 1.0,
-                })
-              }
-              className={`relative flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
-                effects.activeEffect === 'devil_horns'
-                  ? 'bg-red-950/30 border-red-500/80 text-white shadow-lg shadow-red-950/40 ring-1 ring-red-500/50'
-                  : 'bg-neutral-900/40 border-neutral-800/80 text-neutral-400 hover:bg-neutral-800/50 hover:border-neutral-700'
-              }`}
-            >
-              <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-neutral-950 border border-neutral-800 flex items-center justify-center mb-2">
-                <img
-                  src="/sprites/effects/devil_horns_thumb.png"
-                  alt="Cuernos de Diablo"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <span className="text-xs font-medium text-neutral-200">Cuernos Diablo</span>
-              <span className="text-[10px] text-red-400/90 mt-0.5 font-medium">Halloween</span>
-            </button>
+            {/* Listado dinámico de Efectos Instalados */}
+            {installedEffects.map((item) => {
+              const isSelected = effects.activeEffect === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    if (isSelected) {
+                      onChange({ ...effects, activeEffect: 'none' });
+                    } else {
+                      const next = { ...effects, activeEffect: item.id };
+                      if (item.variables) {
+                        item.variables.forEach((v) => {
+                          if ((next as any)[v.key] === undefined) {
+                            (next as any)[v.key] = v.default;
+                          }
+                        });
+                      }
+                      onChange(next);
+                    }
+                  }}
+                  className={`relative flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
+                    isSelected
+                      ? 'bg-neutral-800/80 border-amber-500/80 text-white shadow-lg ring-1 ring-amber-500/50'
+                      : 'bg-neutral-900/40 border-neutral-800/80 text-neutral-400 hover:bg-neutral-800/50 hover:border-neutral-700'
+                  }`}
+                >
+                  <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-neutral-950 border border-neutral-800 flex items-center justify-center mb-2">
+                    <img
+                      src={item.thumb}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <span className="text-xs font-medium text-neutral-200">{item.name}</span>
+                  {item.badge && (
+                    <span className="text-[10px] text-neutral-400 mt-0.5 font-medium">{item.badge}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Deslizador de Intensidad (visible cuando hay un efecto activo) */}
-          {effects.activeEffect === 'devil_horns' && (
-            <div className="p-3.5 bg-neutral-900/60 border border-neutral-800/80 rounded-xl space-y-2.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-neutral-300 font-medium">Opacidad del Accesorio</span>
-                <span className="text-neutral-400 font-mono text-[11px]">
-                  {Math.round((effects.effectIntensity ?? 1.0) * 100)}%
-                </span>
+          {/* Generación Dinámica de Sliders para el Efecto Activo */}
+          {(() => {
+            const activeItem = installedEffects.find((e) => e.id === effects.activeEffect);
+            if (!activeItem || !activeItem.variables || activeItem.variables.length === 0) {
+              return null;
+            }
+
+            return (
+              <div className="p-3.5 bg-neutral-900/60 border border-neutral-800/80 rounded-xl space-y-4">
+                <div className="flex items-center justify-between text-xs border-b border-neutral-800/80 pb-2">
+                  <span className="text-amber-400 font-medium">Ajustes: {activeItem.name}</span>
+                  <span className="text-neutral-500 font-mono text-[10px]">CONFIGURABLE</span>
+                </div>
+
+                {activeItem.variables.map((v) => {
+                  const rawVal = (effects as any)[v.key] ?? v.default;
+                  const isPercent = v.unit === '%';
+                  const displayVal = isPercent
+                    ? `${Math.round(rawVal * 100)}%`
+                    : v.unit === 'x'
+                    ? `${Number(rawVal).toFixed(v.step < 0.1 ? 2 : 1)}x`
+                    : `${rawVal}${v.unit || ''}`;
+
+                  const minVal = isPercent ? v.min * 100 : v.min;
+                  const maxVal = isPercent ? v.max * 100 : v.max;
+                  const stepVal = isPercent ? v.step * 100 : v.step;
+                  const currentSliderVal = isPercent ? Math.round(rawVal * 100) : rawVal;
+
+                  return (
+                    <div key={v.key} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-neutral-300">{v.label}</span>
+                        <span className="text-neutral-400 font-mono text-[11px]">{displayVal}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={minVal}
+                        max={maxVal}
+                        step={stepVal}
+                        value={currentSliderVal}
+                        onChange={(e) => {
+                          const num = Number(e.target.value);
+                          const finalVal = isPercent ? num / 100.0 : num;
+                          onChange({ ...effects, [v.key]: finalVal });
+                        }}
+                        className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+                  );
+                })}
               </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={Math.round((effects.effectIntensity ?? 1.0) * 100)}
-                onChange={(e) =>
-                  onChange({ ...effects, effectIntensity: Number(e.target.value) / 100.0 })
-                }
-                className="w-full accent-red-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 

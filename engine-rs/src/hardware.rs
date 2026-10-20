@@ -53,15 +53,62 @@ fn query_reg_value(key: &str, value_name: &str) -> Option<String> {
 }
 
 fn detect_npu_device() -> Option<String> {
-    let output = std::process::Command::new("reg")
+    if let Ok(output) = std::process::Command::new("reg")
         .args(["query", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI", "/s", "/f", "AI Boost"])
         .output()
-        .ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    if text.contains("AI Boost") || text.contains("Intel(R) AI Boost") {
-        return Some("Intel(R) AI Boost (NPU Compute Accelerator)".to_string());
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if text.contains("AI Boost") || text.contains("Intel(R) AI Boost") {
+            return Some("Intel(R) AI Boost (NPU Compute Accelerator)".to_string());
+        }
     }
+
+    if let Ok(output) = std::process::Command::new("reg")
+        .args(["query", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI", "/s", "/f", "IPU"])
+        .output()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if text.contains("AMD IPU") || text.contains("Ryzen AI") {
+            return Some("AMD Ryzen AI (NPU Accelerator)".to_string());
+        }
+    }
+
     None
+}
+
+fn detect_primary_gpu() -> (String, bool) {
+    let mut detected_gpus = Vec::new();
+    for idx in 0..5 {
+        let key = format!(
+            "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{{4d36e968-e325-11ce-bfc1-08002be10318}}\\{:04}",
+            idx
+        );
+        if let Some(name) = query_reg_value(&key, "DriverDesc") {
+            if !name.trim().is_empty() && !name.contains("Basic Display") {
+                detected_gpus.push(name);
+            }
+        }
+    }
+
+    // Priorizar GPU dedicada si existe
+    for gpu in &detected_gpus {
+        let is_dedicated = gpu.contains("NVIDIA")
+            || gpu.contains("GeForce")
+            || gpu.contains("RTX")
+            || gpu.contains("GTX")
+            || gpu.contains("Radeon")
+            || gpu.contains("AMD")
+            || gpu.contains("Arc");
+        if is_dedicated {
+            return (gpu.clone(), true);
+        }
+    }
+
+    if let Some(first) = detected_gpus.into_iter().next() {
+        return (first, false);
+    }
+
+    ("GPU Compatible con Direct3D 12".to_string(), false)
 }
 
 impl SystemHardwareInfo {
@@ -73,25 +120,10 @@ impl SystemHardwareInfo {
         let cpu_name = query_reg_value("HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", "ProcessorNameString")
             .unwrap_or_else(|| "Procesador x86_64".to_string());
 
-        let gpu_name = query_reg_value(
-            "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
-            "DriverDesc",
-        ).or_else(|| {
-            query_reg_value(
-                "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0001",
-                "DriverDesc",
-            )
-        }).unwrap_or_else(|| "GPU Compatible con Direct3D 12".to_string());
-
+        let (gpu_name, has_dedicated_gpu) = detect_primary_gpu();
         let npu_opt = detect_npu_device();
         let has_npu = npu_opt.is_some();
         let npu_name = npu_opt.unwrap_or_else(|| "No detectada".to_string());
-
-        let has_dedicated_gpu = gpu_name.contains("NVIDIA") 
-            || gpu_name.contains("GeForce") 
-            || gpu_name.contains("Radeon") 
-            || gpu_name.contains("RTX") 
-            || gpu_name.contains("Arc");
 
         let video_backends = vec![
             HardwareOption {

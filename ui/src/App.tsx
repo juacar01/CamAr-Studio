@@ -14,6 +14,7 @@ const DEFAULT_EFFECTS: EffectState = {
   selectedHeight: 1080,
   selectedFps: 60,
   selectedFormat: 'NV12',
+  cameraRotation: 0,
 
   colorRange: 0, // Full
   colorSpace: 0, // Rec709
@@ -220,6 +221,7 @@ export const App: React.FC = () => {
             selectedHeight: savedPreset.selected_height || prev.selectedHeight,
             selectedFps: savedPreset.selected_fps || prev.selectedFps,
             selectedFormat: savedPreset.selected_format || prev.selectedFormat,
+            cameraRotation: savedPreset.camera_rotation ?? prev.cameraRotation ?? 0,
             colorRange: savedPreset.color_range === 'Limited' ? 1 : 0,
             colorSpace: savedPreset.color_space === 'SRgb' ? 1 : savedPreset.color_space === 'Rec601' ? 2 : savedPreset.color_space === 'Rec2020' ? 3 : 0,
             saturation: savedPreset.saturation ?? prev.saturation,
@@ -375,6 +377,14 @@ export const App: React.FC = () => {
     engineClient.toggleVirtualCam(!telemetry.vcamActive);
   };
 
+  const handleRotateCamera = () => {
+    const nextRot = ((effects.cameraRotation || 0) + 90) % 360;
+    const updated = { ...effects, cameraRotation: nextRot };
+    effectsRef.current = updated;
+    setEffects(updated);
+    engineClient.sendConfigUpdate(updated);
+  };
+
   const handleReset = () => {
     effectsRef.current = DEFAULT_EFFECTS;
     setEffects(DEFAULT_EFFECTS);
@@ -397,6 +407,8 @@ export const App: React.FC = () => {
         selectedHeight={effects.selectedHeight}
         selectedFps={effects.selectedFps}
         selectedFormat={effects.selectedFormat}
+        cameraRotation={effects.cameraRotation ?? 0}
+        onRotateCamera={handleRotateCamera}
         selectedAudioId={effects.selectedAudioId}
         audioMuted={effects.audioMuted}
         onToggleMute={handleToggleMute}

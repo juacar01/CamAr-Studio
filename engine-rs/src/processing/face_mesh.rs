@@ -42,6 +42,14 @@ impl FaceMeshRenderer {
         }
     }
 
+    pub fn resize(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
+        self.face_uv_map.resize(width * height, 0);
+        self.face_uv_map.fill(0);
+        self.prev_box = (0, 0, 0, 0);
+    }
+
     /// Limpia solo el área del rostro del frame anterior y rasteriza los 898 triángulos canónicos.
     pub fn rasterize_face(&mut self, landmarks: &[Point2f]) -> Option<(usize, usize, usize, usize)> {
         if landmarks.len() < 468 {
@@ -53,8 +61,11 @@ impl FaceMeshRenderer {
         if p_max_x >= p_min_x && p_max_y >= p_min_y && p_max_x < self.width && p_max_y < self.height {
             for y in p_min_y..=p_max_y {
                 let row_start = y * self.width;
-                let slice = &mut self.face_uv_map[row_start + p_min_x..=row_start + p_max_x];
-                slice.fill(0);
+                let end_idx = row_start + p_max_x;
+                if end_idx < self.face_uv_map.len() {
+                    let slice = &mut self.face_uv_map[row_start + p_min_x..=end_idx];
+                    slice.fill(0);
+                }
             }
         }
 
@@ -124,7 +135,10 @@ impl FaceMeshRenderer {
                     let u = w0 * uv0[0] + w1 * uv1[0] + w2 * uv2[0];
                     let v = w0 * uv0[1] + w1 * uv1[1] + w2 * uv2[1];
 
-                    self.face_uv_map[row_offset + x] = pack_face_uv(u, v, region);
+                    let idx = row_offset + x;
+                    if idx < self.face_uv_map.len() {
+                        self.face_uv_map[idx] = pack_face_uv(u, v, region);
+                    }
                 }
             }
         }

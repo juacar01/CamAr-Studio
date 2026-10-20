@@ -32,6 +32,7 @@ export interface EffectState {
   selectedHeight: number;
   selectedFps: number;
   selectedFormat: string;
+  cameraRotation?: number; // 0: Normal 16:9, 90: Vertical Der 9:16, 180: Invertido, 270: Vertical Izq 9:16
 
   // Espacio y Gama de Color
   colorRange: number; // 0: Full (0-255), 1: Limited (16-235)
@@ -90,6 +91,9 @@ export interface EffectState {
   beard_color?: string;
   activeEffect?: string;
   effectIntensity?: number;
+  mouthScale?: number;
+  eyesScale?: number;
+  eyesDistance?: number;
 
   // Background
   bgMode: BackgroundMode;
@@ -120,6 +124,27 @@ export interface EffectState {
   makeupIntensity?: number;
   baseAppearance?: BaseAppearanceState;
   customPresets?: Record<string, MakeupPresetConfig>;
+}
+
+export interface EffectVariable {
+  key: string;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  default: number;
+  unit?: string;
+}
+
+export interface InstalledEffectItem {
+  id: string;
+  name: string;
+  category?: string;
+  thumb: string;
+  badge?: string;
+  badgeColor?: string;
+  manifestPath?: string;
+  variables?: EffectVariable[];
 }
 
 export interface BaseAppearanceState {
@@ -154,6 +179,11 @@ export interface BaseAppearanceState {
   beardColor?: string;
   irisLighting?: number;
   irisColor?: string;
+  activeEffect?: string;
+  effectIntensity?: number;
+  mouthScale?: number;
+  eyesScale?: number;
+  eyesDistance?: number;
 }
 
 export interface CameraHardwareProfile {

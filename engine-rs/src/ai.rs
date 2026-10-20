@@ -286,20 +286,74 @@ impl InternalAiEngine {
             let p_selfie = c_selfie.as_ref().map(|c| c.as_ptr()).unwrap_or(std::ptr::null());
 
             if !p_mesh.is_null() {
-                let c_backend = CString::new(ai_backend).unwrap_or_else(|_| CString::new("npu").unwrap());
-                tracker_ptr = if let Some(acq_ex) = b.acquire_ex {
-                    unsafe { (acq_ex)(p_det, p_mesh, p_selfie, c_backend.as_ptr()) }
-                } else {
-                    unsafe { (b.acquire)(p_det, p_mesh, p_selfie) }
+                // Secuencia de cascada obligatoria según hardware: NPU -> GPU -> CPU
+                let fallback_order: Vec<&str> = match ai_backend {
+                    "npu" => vec!["npu", "gpu", "cpu"],
+                    "gpu" => vec!["gpu", "cpu"],
+                    _ => vec!["cpu"],
                 };
-                if !tracker_ptr.is_null() {
-                    crate::log_info!(
+
+                for backend in fallback_order {
+                    if let Ok(c_backend) = CString::new(backend) {
+                        let ptr = if let Some(acq_ex) = b.acquire_ex {
+                            unsafe { (acq_ex)(p_det, p_mesh, p_selfie, c_backend.as_ptr()) }
+                        } else {
+                            unsafe { (b.acquire)(p_det, p_mesh, p_selfie) }
+                        };
+
+                        if !ptr.is_null() {
+                            tracker_ptr = ptr;
+                            if backend != ai_backend {
+                                crate::log_warn!(
+                                    "AiEngine",
+                                    "Backend solicitado '{}' no pudo inicializarse. Fallback exitoso a '{}'.",
+                                    ai_backend,
+                                    backend
+                                );
+                            } else {
+                                crate::log_info!(
+                                    "AiEngine",
+                                    "Tracker MediaPipe FaceMesh 3D & Selfie Segmentation inicializado con backend: {}",
+                                    backend
+                                );
+                            }
+                            break;
+                        } else {
+                            crate::log_warn!(
+                                "AiEngine",
+                                "Fallo al inicializar tracker de IA con backend '{}'. Probando siguiente en cascada...",
+                                backend
+                            );
+                        }
+                    }
+                }
+
+                if tracker_ptr.is_null() {
+                    crate::log_error!(
                         "AiEngine",
-                        "Tracker MediaPipe FaceMesh 3D & Selfie Segmentation inicializado con backend: {}",
-                        ai_backend
+                        "Todos los backends de IA (NPU, GPU, CPU) fallaron en inicialización."
+                    );
+                    crate::logger::show_error_dialog(
+                        "Módulo de IA (Inicialización)",
+                        "No se pudo inicializar ningún backend de procesamiento de IA (NPU, GPU ni CPU). Verifique los controladores gráficos o la compatibilidad de DirectML.",
                     );
                 }
+            } else {
+                crate::log_error!(
+                    "AiEngine",
+                    "No se encontró el modelo principal FaceMesh ('models/FaceMesh.onnx')."
+                );
+                crate::logger::show_error_dialog(
+                    "Módulo de IA (Modelos)",
+                    "No se encontró el modelo 'models/FaceMesh.onnx'. Asegúrese de que la carpeta 'models/' esté presente junto al ejecutable.",
+                );
             }
+        } else {
+            crate::log_error!("AiEngine", "No se pudo cargar 'camar_tracker.dll'.");
+            crate::logger::show_error_dialog(
+                "Módulo de IA (Librería)",
+                "No se pudo cargar la librería 'camar_tracker.dll' ni sus dependencias (DirectML.dll, onnxruntime.dll). La detección facial y efectos avanzados estarán desactivados.",
+            );
         }
 
         let seg_buf = vec![255u8; 256 * 256];

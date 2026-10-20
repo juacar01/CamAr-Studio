@@ -165,7 +165,8 @@ $foldersToCopy = @(
     @{ Src = "$rootDir\models"; Dst = "$portableFolder\models" },
     @{ Src = "$rootDir\driver"; Dst = "$portableFolder\driver" },
     @{ Src = "$rootDir\engine-rs\assets\sprites"; Dst = "$portableFolder\sprites" },
-    @{ Src = "$rootDir\presets"; Dst = "$portableFolder\presets" }
+    @{ Src = "$rootDir\presets"; Dst = "$portableFolder\presets" },
+    @{ Src = "$rootDir\effects"; Dst = "$portableFolder\effects" }
 )
 foreach ($item in $foldersToCopy) {
     if (Test-Path $item.Src) {
