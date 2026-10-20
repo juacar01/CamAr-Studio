@@ -32,6 +32,7 @@ export interface EffectState {
   selectedHeight: number;
   selectedFps: number;
   selectedFormat: string;
+  cameraRotation?: number; // 0: Normal 16:9, 90: Vertical Der 9:16, 180: Invertido, 270: Vertical Izq 9:16
 
   // Espacio y Gama de Color
   colorRange: number; // 0: Full (0-255), 1: Limited (16-235)
@@ -62,6 +63,7 @@ export interface EffectState {
   skinWhitening?: number;
   faceSlim: number;
   eyeEnlarge: number;
+  eyeShape?: string; // 'auto' | 'almond' | 'foxy' | 'asian' | 'doe' | 'hooded'
   eyeRound?: number;
   eyeBrighten?: number;
   eyeCatchlight?: number;
@@ -77,7 +79,21 @@ export interface EffectState {
   lipstick: number;
   lipstickColor?: string;
   eyeshadow: number;
+  eyeshadowColor?: string;
+  eyeshadowStyle?: string;
+  eyebrows: number;
+  eyebrowColor?: string;
+  eyebrowStyle?: string;
   contour: number;
+  beardEnhancement?: number;
+  beard_enhancement?: number;
+  beardColor?: string;
+  beard_color?: string;
+  activeEffect?: string;
+  effectIntensity?: number;
+  mouthScale?: number;
+  eyesScale?: number;
+  eyesDistance?: number;
 
   // Background
   bgMode: BackgroundMode;
@@ -110,12 +126,34 @@ export interface EffectState {
   customPresets?: Record<string, MakeupPresetConfig>;
 }
 
+export interface EffectVariable {
+  key: string;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  default: number;
+  unit?: string;
+}
+
+export interface InstalledEffectItem {
+  id: string;
+  name: string;
+  category?: string;
+  thumb: string;
+  badge?: string;
+  badgeColor?: string;
+  manifestPath?: string;
+  variables?: EffectVariable[];
+}
+
 export interface BaseAppearanceState {
   beautyEnabled?: boolean;
   skinSmoothing: number;
   skinWhitening?: number;
   faceSlim: number;
   eyeEnlarge: number;
+  eyeShape?: string;
   eyeRound?: number;
   eyeBrighten?: number;
   eyeCatchlight?: number;
@@ -129,9 +167,23 @@ export interface BaseAppearanceState {
   lipstick: number;
   lipstickColor?: string;
   eyeshadow: number;
+  eyeshadowColor?: string;
+  eyeshadowStyle?: string;
+  eyebrows: number;
+  eyebrowColor?: string;
+  eyebrowStyle?: string;
   contour: number;
+  beard_enhancement?: number;
+  beard_color?: string;
+  beardEnhancement?: number;
+  beardColor?: string;
   irisLighting?: number;
   irisColor?: string;
+  activeEffect?: string;
+  effectIntensity?: number;
+  mouthScale?: number;
+  eyesScale?: number;
+  eyesDistance?: number;
 }
 
 export interface CameraHardwareProfile {
@@ -214,8 +266,16 @@ export interface PresetFaceLight {
 
 export interface PresetMakeup {
   lipstick: number;
+  lipstick_color?: string;
   eyeshadow: number;
+  eyeshadow_color?: string;
+  eyeshadow_style?: string;
+  eyebrows?: number;
+  eyebrow_color?: string;
+  eyebrow_style?: string;
   contour: number;
+  beard_enhancement?: number;
+  beard_color?: string;
   teeth_whitening: number;
   eye_brighten: number;
   eye_catchlight?: number;

@@ -59,7 +59,7 @@ pub fn init_logger() {
         } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
             s.as_str()
         } else {
-            "Panic desconocido"
+            "Error de ejecución no controlado (Panic)"
         };
         let location = panic_info
             .location()
@@ -79,7 +79,15 @@ pub fn init_logger() {
         if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&main_path_clone) {
             let _ = f.write_all(err_msg.as_bytes());
         }
+
+        let desc = format!(
+            "Se produjo un fallo inesperado en el motor:\n{}\n\nUbicación técnica: {}\n\nConsulte el archivo 'logs/error.log' para más información.",
+            payload, location
+        );
+        show_error_dialog("Ejecución de CamAr Studio", &desc);
     }));
+
+    install_crash_handlers();
 
     let mut lock = LOGGER.lock().unwrap();
     *lock = Some(LoggerInstance {
@@ -144,3 +152,117 @@ macro_rules! log_debug {
         $crate::logger::log($crate::logger::LogLevel::Debug, $target, &format!($($arg)+))
     };
 }
+
+#[link(name = "user32")]
+extern "system" {
+    fn MessageBoxW(
+        hWnd: *mut std::ffi::c_void,
+        lpText: *const u16,
+        lpCaption: *const u16,
+        uType: u32,
+    ) -> i32;
+}
+
+/// Muestra una ventana de diálogo nativa de Windows con un mensaje claro y legible para el usuario.
+pub fn show_error_dialog(modulo: &str, descripcion: &str) {
+    let title: Vec<u16> = "CamAr Studio - Error\0".encode_utf16().collect();
+    let text = format!("Error en {}:\n\n{}\0", modulo, descripcion);
+    let msg: Vec<u16> = text.encode_utf16().collect();
+
+    unsafe {
+        // MB_OK (0x0) | MB_ICONERROR (0x10) | MB_TOPMOST (0x40000) | MB_SETFOREGROUND (0x10000)
+        MessageBoxW(
+            std::ptr::null_mut(),
+            msg.as_ptr(),
+            title.as_ptr(),
+            0x00000010 | 0x00040000 | 0x00010000,
+        );
+    }
+}
+
+#[repr(C)]
+struct ExceptionRecord {
+    exception_code: u32,
+    exception_flags: u32,
+    exception_record: *mut ExceptionRecord,
+    exception_address: *mut std::ffi::c_void,
+    number_parameters: u32,
+    exception_information: [usize; 15],
+}
+
+#[repr(C)]
+struct ExceptionPointers {
+    exception_record: *mut ExceptionRecord,
+    context_record: *mut std::ffi::c_void,
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn unhandled_exception_handler(
+    info: *mut std::ffi::c_void,
+) -> i32 {
+    let mut code_str = "0x00000000".to_string();
+    let mut addr_str = "0x0".to_string();
+    let mut reason = "Fallo nativo no identificado".to_string();
+
+    if !info.is_null() {
+        let ep = info as *const ExceptionPointers;
+        if !(*ep).exception_record.is_null() {
+            let rec = (*ep).exception_record;
+            let code = (*rec).exception_code;
+            let addr = (*rec).exception_address;
+            code_str = format!("0x{:08X}", code);
+            addr_str = format!("{:p}", addr);
+
+            reason = match code {
+                0xC0000005 => "Violación de Acceso a Memoria (STATUS_ACCESS_VIOLATION)".to_string(),
+                0xC000001D => "Instrucción de CPU ilegal o no soportada (STATUS_ILLEGAL_INSTRUCTION)".to_string(),
+                0xC00000FD => "Desbordamiento de Pila (STATUS_STACK_OVERFLOW)".to_string(),
+                0xC0000008 => "Handle de sistema inválido (STATUS_INVALID_HANDLE)".to_string(),
+                0xC0000094 => "División por cero en CPU (STATUS_INTEGER_DIVIDE_BY_ZERO)".to_string(),
+                0xE06D7363 => "Excepción C++ no controlada en librería nativa (MSVC C++ Exception)".to_string(),
+                _ => format!("Excepción del sistema (Código {})", code_str),
+            };
+        }
+    }
+
+    let ts = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let err_msg = format!(
+        "[{}] [CRITICAL NATIVE EXCEPTION] Código: {} | Causa: {} | Dirección: {}\n",
+        ts, code_str, reason, addr_str
+    );
+
+    eprintln!("{}", err_msg);
+
+    // Escribir directamente a logs/error.log y logs/camar_studio.log
+    if let Ok(guard) = LOGGER.lock() {
+        if let Some(inst) = guard.as_ref() {
+            if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&inst.error_log_path) {
+                let _ = f.write_all(err_msg.as_bytes());
+            }
+            if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&inst.main_log_path) {
+                let _ = f.write_all(err_msg.as_bytes());
+            }
+        }
+    }
+
+    let desc = format!(
+        "Se ha producido un error crítico a nivel de sistema:\n\n• Causa: {}\n• Código: {}\n• Dirección: {}\n\nEl reporte técnico completo fue registrado en 'logs/error.log'.",
+        reason, code_str, addr_str
+    );
+    show_error_dialog("Excepción del Sistema (Nativo)", &desc);
+    1 // EXCEPTION_EXECUTE_HANDLER
+}
+
+pub fn install_crash_handlers() {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn SetUnhandledExceptionFilter(
+                lpTopLevelExceptionFilter: unsafe extern "system" fn(*mut std::ffi::c_void) -> i32,
+            ) -> *mut std::ffi::c_void;
+        }
+        SetUnhandledExceptionFilter(unhandled_exception_handler);
+    }
+}
+

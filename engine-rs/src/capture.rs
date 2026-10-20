@@ -449,3 +449,70 @@ impl Drop for VideoCapture {
         self.stop();
     }
 }
+
+/// Rotación multihilo ultra-rápida de buffers RGBA (<0.5ms) para orientación de sensor vertical/apaisado
+pub fn rotate_rgba(src: &[u8], src_w: usize, src_h: usize, rot: i32, dst: &mut Vec<u8>) {
+    let rot_norm = ((rot % 360) + 360) % 360;
+    let (dst_w, dst_h) = match rot_norm {
+        90 | 270 => (src_h, src_w),
+        _ => (src_w, src_h),
+    };
+    let target_len = dst_w * dst_h * 4;
+    if dst.len() != target_len {
+        dst.resize(target_len, 0);
+    }
+
+    if rot_norm == 0 {
+        dst.copy_from_slice(src);
+        return;
+    }
+
+    match rot_norm {
+        90 => {
+            // 90° Horario (Vertical Derecha): dst(x, y) = src(y, src_h - 1 - x)
+            dst.par_chunks_exact_mut(dst_w * 4)
+                .enumerate()
+                .for_each(|(y_out, row)| {
+                    let x_in = y_out;
+                    for x_out in 0..dst_w {
+                        let y_in = src_h - 1 - x_out;
+                        let src_idx = (y_in * src_w + x_in) * 4;
+                        let dst_idx = x_out * 4;
+                        row[dst_idx..dst_idx + 4].copy_from_slice(&src[src_idx..src_idx + 4]);
+                    }
+                });
+        }
+        180 => {
+            // 180° Invertido: dst(x, y) = src(src_w - 1 - x, src_h - 1 - y)
+            dst.par_chunks_exact_mut(dst_w * 4)
+                .enumerate()
+                .for_each(|(y_out, row)| {
+                    let y_in = src_h - 1 - y_out;
+                    for x_out in 0..dst_w {
+                        let x_in = src_w - 1 - x_out;
+                        let src_idx = (y_in * src_w + x_in) * 4;
+                        let dst_idx = x_out * 4;
+                        row[dst_idx..dst_idx + 4].copy_from_slice(&src[src_idx..src_idx + 4]);
+                    }
+                });
+        }
+        270 => {
+            // 270° Horario / 90° Antihorario (Vertical Izquierda): dst(x, y) = src(src_w - 1 - y, x)
+            dst.par_chunks_exact_mut(dst_w * 4)
+                .enumerate()
+                .for_each(|(y_out, row)| {
+                    let x_in = src_w - 1 - y_out;
+                    for x_out in 0..dst_w {
+                        let y_in = x_out;
+                        let src_idx = (y_in * src_w + x_in) * 4;
+                        let dst_idx = x_out * 4;
+                        row[dst_idx..dst_idx + 4].copy_from_slice(&src[src_idx..src_idx + 4]);
+                    }
+                });
+        }
+        _ => {
+            dst.copy_from_slice(src);
+        }
+    }
+}
+

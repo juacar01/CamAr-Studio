@@ -14,6 +14,7 @@ const DEFAULT_EFFECTS: EffectState = {
   selectedHeight: 1080,
   selectedFps: 60,
   selectedFormat: 'NV12',
+  cameraRotation: 0,
 
   colorRange: 0, // Full
   colorSpace: 0, // Rec709
@@ -39,6 +40,7 @@ const DEFAULT_EFFECTS: EffectState = {
   skinWhitening: 0.0,
   faceSlim: 0.0,
   eyeEnlarge: 0.0,
+  eyeShape: 'auto',
   eyeRound: 0.0,
   eyeBrighten: 0.0,
   eyeCatchlight: 0.0,
@@ -54,7 +56,14 @@ const DEFAULT_EFFECTS: EffectState = {
   lipstick: 0.0,
   lipstickColor: 'rose_natural',
   eyeshadow: 0.0,
+  eyeshadowColor: 'bronze',
+  eyeshadowStyle: 'natural_nude',
+  eyebrows: 0.0,
+  eyebrowColor: 'dark_brown',
+  eyebrowStyle: 'natural_fill',
   contour: 0.0,
+  activeEffect: 'none',
+  effectIntensity: 1.0,
   bgMode: 0,
   blurRadius: 16.0,
   edgeFeather: 1.5,
@@ -212,6 +221,7 @@ export const App: React.FC = () => {
             selectedHeight: savedPreset.selected_height || prev.selectedHeight,
             selectedFps: savedPreset.selected_fps || prev.selectedFps,
             selectedFormat: savedPreset.selected_format || prev.selectedFormat,
+            cameraRotation: savedPreset.camera_rotation ?? prev.cameraRotation ?? 0,
             colorRange: savedPreset.color_range === 'Limited' ? 1 : 0,
             colorSpace: savedPreset.color_space === 'SRgb' ? 1 : savedPreset.color_space === 'Rec601' ? 2 : savedPreset.color_space === 'Rec2020' ? 3 : 0,
             saturation: savedPreset.saturation ?? prev.saturation,
@@ -247,6 +257,7 @@ export const App: React.FC = () => {
             lipstick: savedPreset.lipstick ?? prev.lipstick,
             lipstickColor: savedPreset.lipstick_color || prev.lipstickColor || 'rose_natural',
             eyeshadow: savedPreset.eyeshadow ?? prev.eyeshadow,
+            eyebrows: savedPreset.eyebrows ?? prev.eyebrows,
             contour: savedPreset.contour ?? prev.contour,
             filterLut: savedPreset.filter_lut || prev.filterLut,
             filterIntensity: savedPreset.filter_intensity ?? prev.filterIntensity,
@@ -255,6 +266,8 @@ export const App: React.FC = () => {
             favoritePresets: savedPreset.favorite_presets || prev.favoritePresets,
             activePresetId: savedPreset.active_preset_id || prev.activePresetId,
             makeupIntensity: savedPreset.makeup_intensity ?? prev.makeupIntensity,
+            activeEffect: savedPreset.active_effect || prev.activeEffect || 'none',
+            effectIntensity: savedPreset.effect_intensity ?? prev.effectIntensity ?? 1.0,
             customPresets: savedPreset.custom_presets || prev.customPresets,
             baseAppearance: {
               beautyEnabled: savedPreset.beauty_enabled ?? true,
@@ -273,8 +286,13 @@ export const App: React.FC = () => {
               foundationIntensity: ba?.foundation_intensity ?? Math.round((savedPreset.foundation_intensity ?? 0.40) * 100),
               teethWhitening: ba?.teeth_whitening ?? Math.round((savedPreset.teeth_whitening ?? 0) * 100),
               lipstick: ba?.lipstick ?? Math.round((savedPreset.lipstick ?? 0) * 100),
-              lipstickColor: ba?.lipstick_color || savedPreset.lipstick_color || 'rose_natural',
+              eyeShape: ba?.eye_shape || savedPreset.eye_shape || 'auto',
               eyeshadow: ba?.eyeshadow ?? Math.round((savedPreset.eyeshadow ?? 0) * 100),
+              eyeshadowColor: ba?.eyeshadow_color || savedPreset.eyeshadow_color || 'bronze',
+              eyeshadowStyle: ba?.eyeshadow_style || savedPreset.eyeshadow_style || 'natural_nude',
+              eyebrows: ba?.eyebrows ?? Math.round((savedPreset.eyebrows ?? 0) * 100),
+              eyebrowColor: ba?.eyebrow_color || savedPreset.eyebrow_color || 'dark_brown',
+              eyebrowStyle: ba?.eyebrow_style || savedPreset.eyebrow_style || 'natural_fill',
               contour: ba?.contour ?? Math.round((savedPreset.contour ?? 0) * 100),
               irisLighting: ba?.iris_lighting ?? Math.round((savedPreset.iris_lighting ?? 0) * 100),
               irisColor: ba?.iris_color || savedPreset.iris_color || 'none',
@@ -359,6 +377,14 @@ export const App: React.FC = () => {
     engineClient.toggleVirtualCam(!telemetry.vcamActive);
   };
 
+  const handleRotateCamera = () => {
+    const nextRot = ((effects.cameraRotation || 0) + 90) % 360;
+    const updated = { ...effects, cameraRotation: nextRot };
+    effectsRef.current = updated;
+    setEffects(updated);
+    engineClient.sendConfigUpdate(updated);
+  };
+
   const handleReset = () => {
     effectsRef.current = DEFAULT_EFFECTS;
     setEffects(DEFAULT_EFFECTS);
@@ -381,6 +407,8 @@ export const App: React.FC = () => {
         selectedHeight={effects.selectedHeight}
         selectedFps={effects.selectedFps}
         selectedFormat={effects.selectedFormat}
+        cameraRotation={effects.cameraRotation ?? 0}
+        onRotateCamera={handleRotateCamera}
         selectedAudioId={effects.selectedAudioId}
         audioMuted={effects.audioMuted}
         onToggleMute={handleToggleMute}

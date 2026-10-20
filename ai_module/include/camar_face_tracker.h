@@ -44,6 +44,11 @@ CAMAR_AI_API snapjm_face_tracker_t *snapjm_face_tracker_acquire(const char *dete
                                                                const char *mesh_model_path,
                                                                const char *selfie_model_path);
 
+CAMAR_AI_API snapjm_face_tracker_t *snapjm_face_tracker_acquire_ex(const char *detector_model_path,
+                                                                  const char *mesh_model_path,
+                                                                  const char *selfie_model_path,
+                                                                  const char *ai_backend);
+
 CAMAR_AI_API void snapjm_face_tracker_release(snapjm_face_tracker_t *tracker);
 
 CAMAR_AI_API snapjm_face_tracker_t *snapjm_face_tracker_create(const char *detector_model_path,

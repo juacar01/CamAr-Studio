@@ -1,853 +1,34 @@
 use crate::types::{BackgroundMode, ColorRange, ColorSpace, FaceLandmarks, FaceLighting, Point2f, StudioConfig};
 use rayon::prelude::*;
 
-// Conversión Rec. 709 RGB a YCbCr estándar HDTV/PC
-#[inline(always)]
-fn rgb_to_ycbcr(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
-    let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    let cb = -0.1146 * r - 0.3854 * g + 0.5000 * b;
-    let cr = 0.5000 * r - 0.4542 * g - 0.0458 * b;
-    (y, cb, cr)
-}
+pub mod color;
+pub mod geometry;
+pub mod sprites;
+pub mod eyes;
+pub mod eyebrows;
+pub mod lips;
+pub mod photometry;
+pub mod face_mesh_data;
+pub mod face_mesh;
+pub mod effects;
+pub mod mesh3d;
+pub mod beard;
+pub mod face_inset;
 
-// Conversión Rec. 709 YCbCr a RGB estándar HDTV/PC
-#[inline(always)]
-fn ycbcr_to_rgb(y: f32, cb: f32, cr: f32) -> (f32, f32, f32) {
-    let r = y + 1.5748 * cr;
-    let g = y - 0.1873 * cb - 0.4681 * cr;
-    let b = y + 1.8556 * cb;
-    (r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0))
-}
+pub use face_mesh::*;
+#[allow(unused_imports)]
+pub use effects::*;
+pub use mesh3d::*;
+pub use beard::*;
+pub use face_inset::*;
 
-// Compresión Filmic de Altas Luces (Soft Highlight Roll-off C^1 Continuo sin exp() transcendental)
-// Previene el quemado abrupto a 1.0 (#FFFFFF) en paredes o reflejos y elimina bandas de Mach
-#[inline(always)]
-fn filmic_soft_shoulder(c: f32) -> f32 {
-    let knee = 0.62_f32;
-    if c <= knee {
-        c.max(0.0)
-    } else {
-        let x = c - knee;
-        let s = 1.8 * x;
-        let shoulder = knee + 0.32 * (s / (1.0 + 0.85 * s));
-        let t = (x * (1.0 / 0.60)).clamp(0.0, 1.0);
-        let blend = t * t * (3.0 - 2.0 * t);
-        (c * (1.0 - blend) + shoulder * blend).clamp(0.0, 1.0)
-    }
-}
-
-// Conversión RGB a HSV
-#[inline(always)]
-fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let d = max - min;
-    let s = if max == 0.0 { 0.0 } else { d / max };
-    let v = max;
-
-    let h = if d == 0.0 {
-        0.0
-    } else if max == r {
-        (g - b) / d + (if g < b { 6.0 } else { 0.0 })
-    } else if max == g {
-        (b - r) / d + 2.0
-    } else {
-        (r - g) / d + 4.0
-    } / 6.0;
-
-    (h, s, v)
-}
-
-// Conversión HSV a RGB
-#[inline(always)]
-fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
-    let mut h_norm = h % 1.0;
-    if h_norm < 0.0 {
-        h_norm += 1.0;
-    }
-
-    let i = (h_norm * 6.0).floor() as i32;
-    let f = h_norm * 6.0 - i as f32;
-    let p = v * (1.0 - s);
-    let q = v * (1.0 - f * s);
-    let t = v * (1.0 - (1.0 - f) * s);
-
-    match i % 6 {
-        0 => (v, t, p),
-        1 => (q, v, p),
-        2 => (p, v, t),
-        3 => (p, q, v),
-        4 => (t, p, v),
-        _ => (v, p, q),
-    }
-}
-
-#[inline(always)]
-fn apply_filter_lut(r: f32, g: f32, b: f32, lut_id: &str) -> (f32, f32, f32) {
-    let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-    match lut_id {
-        // ==========================================
-        // 1. CATEGORÍA: NATURAL
-        // ==========================================
-        "nat_porcelain" => {
-            // Porcelana limpia: sutil realce rosa/frío, cero ictericia, sombras limpias
-            let nr = r * 1.03;
-            let ng = g * 0.985;
-            let nb = b * 1.025;
-            let bell = 4.0 * luma * (1.0 - luma);
-            let lift = bell * 0.035;
-            ((nr + lift).clamp(0.0, 1.0), (ng + lift).clamp(0.0, 1.0), (nb + lift).clamp(0.0, 1.0))
-        }
-        "nat_soft_day" => {
-            // Luz suave diurna: calidez natural, medios tonos abiertos
-            let nr = r * 1.04;
-            let ng = g * 1.01;
-            let nb = b * 0.98;
-            let mid = 0.03 * (4.0 * luma * (1.0 - luma));
-            ((nr + mid).clamp(0.0, 1.0), (ng + mid).clamp(0.0, 1.0), (nb + mid).clamp(0.0, 1.0))
-        }
-        "nat_peach_glow" => {
-            // Melocotón saludable: tonos cálidos y rosados en piel
-            let nr = r * 1.06;
-            let ng = g * 0.99;
-            let nb = b * 0.96;
-            let sat = 1.08;
-            let l = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
-            ((l + (nr - l) * sat).clamp(0.0, 1.0), (l + (ng - l) * sat).clamp(0.0, 1.0), (l + (nb - l) * sat).clamp(0.0, 1.0))
-        }
-        "nat_japanese" => {
-            // Película japonesa: negros ligeramente levantados (toe roll-off), verdes pastel aireados
-            let toe = 0.035 * (1.0 - luma).powi(2);
-            let nr = r * 1.01 + toe;
-            let ng = g * 0.96 + toe;
-            let nb = b * 1.04 + toe;
-            (nr.clamp(0.0, 1.0), ng.clamp(0.0, 1.0), nb.clamp(0.0, 1.0))
-        }
-        "nat_ivory_clean" => {
-            // Marfil pulido: definición pura, contraste limpio
-            let s_curve = |c: f32| c * c * (3.0 - 2.0 * c);
-            let nr = r * 0.88 + s_curve(r.clamp(0.0, 1.0)) * 0.12;
-            let ng = g * 0.88 + s_curve(g.clamp(0.0, 1.0)) * 0.12;
-            let nb = b * 0.88 + s_curve(b.clamp(0.0, 1.0)) * 0.12;
-            ((nr * 1.02).clamp(0.0, 1.0), (ng * 1.00).clamp(0.0, 1.0), (nb * 0.99).clamp(0.0, 1.0))
-        }
-        "nat_morning_dew" => {
-            // Rocío matutino: sombras cian frías con altas luces doradas
-            let shadow_cool = (1.0 - luma).clamp(0.0, 1.0) * 0.045;
-            let high_warm = luma.clamp(0.0, 1.0) * 0.040;
-            ((r + high_warm).clamp(0.0, 1.0), (g + shadow_cool * 0.5).clamp(0.0, 1.0), (b + shadow_cool).clamp(0.0, 1.0))
-        }
-
-        // ==========================================
-        // 2. CATEGORÍA: EMOCIONAL
-        // ==========================================
-        "emo_golden_sunset" => {
-            // Atardecer dorado: rayos ámbar intensos, contraste enriquecido
-            let nr = r * 1.16 + 0.04;
-            let ng = g * 1.03 + 0.015;
-            let nb = b * 0.82;
-            let l = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
-            let sat = 1.15;
-            ((l + (nr - l) * sat).clamp(0.0, 1.0), (l + (ng - l) * sat).clamp(0.0, 1.0), (l + (nb - l) * sat).clamp(0.0, 1.0))
-        }
-        "emo_teal_orange" => {
-            // Hollywood Teal & Orange: sombras azul-turquesa, piel naranja cálida
-            let sh = (1.0 - luma / 0.5).clamp(0.0, 1.0);
-            let hi = ((luma - 0.45) / 0.55).clamp(0.0, 1.0);
-            let nr = r + hi * 0.085 - sh * 0.045;
-            let ng = g + hi * 0.025 + sh * 0.020;
-            let nb = b - hi * 0.055 + sh * 0.090;
-            let s_curve = |c: f32| c * c * (3.0 - 2.0 * c);
-            (
-                (nr * 0.85 + s_curve(nr.clamp(0.0, 1.0)) * 0.15).clamp(0.0, 1.0),
-                (ng * 0.85 + s_curve(ng.clamp(0.0, 1.0)) * 0.15).clamp(0.0, 1.0),
-                (nb * 0.85 + s_curve(nb.clamp(0.0, 1.0)) * 0.15).clamp(0.0, 1.0)
-            )
-        }
-        "emo_melancholy" => {
-            // Melancolía: atmósfera crepuscular lavanda/violeta, tonos sutilmente desaturados
-            let sh = (1.0 - luma).clamp(0.0, 1.0) * 0.055;
-            let nr = (r + sh * 0.60) * 0.95;
-            let ng = (g - sh * 0.20) * 0.92;
-            let nb = (b + sh * 1.10) * 1.02;
-            let l = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
-            let sat = 0.88;
-            ((l + (nr - l) * sat).clamp(0.0, 1.0), (l + (ng - l) * sat).clamp(0.0, 1.0), (l + (nb - l) * sat).clamp(0.0, 1.0))
-        }
-        "emo_intimate_dusk" => {
-            // Crepúsculo íntimo: tonos vino profundo y sombras envolventes
-            let nr = r * 1.10;
-            let ng = g * 0.92;
-            let nb = b * 0.98;
-            let toe = 0.025 * (1.0 - luma);
-            ((nr + toe).clamp(0.0, 1.0), ng.clamp(0.0, 1.0), (nb + toe * 0.7).clamp(0.0, 1.0))
-        }
-        "emo_candlelight" => {
-            // Luz de vela: incandescencia pura ámbar/fuego
-            let nr = r * 1.22 + 0.05;
-            let ng = g * 1.04 + 0.02;
-            let nb = b * 0.75;
-            (nr.clamp(0.0, 1.0), ng.clamp(0.0, 1.0), nb.clamp(0.0, 1.0))
-        }
-        "emo_midnight" => {
-            // Medianoche: sombras azul profundo nocturno con piel suavemente iluminada
-            let sh = (1.0 - luma).clamp(0.0, 1.0) * 0.09;
-            let nr = (r - sh * 0.40 + 0.02).clamp(0.0, 1.0);
-            let ng = (g + sh * 0.15).clamp(0.0, 1.0);
-            let nb = (b + sh * 1.20).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-
-        // ==========================================
-        // 3. CATEGORÍA: VÍVIDO
-        // ==========================================
-        "viv_pop_glam" => {
-            // Pop glam: impacto editorial, saturación y contraste cinematográfico
-            let sat = 1.35;
-            let nr = luma + (r - luma) * sat;
-            let ng = luma + (g - luma) * sat;
-            let nb = luma + (b - luma) * sat;
-            let s_curve = |c: f32| c * c * (3.0 - 2.0 * c);
-            (
-                (nr * 0.82 + s_curve(nr.clamp(0.0, 1.0)) * 0.18 * 1.04).clamp(0.0, 1.0),
-                (ng * 0.82 + s_curve(ng.clamp(0.0, 1.0)) * 0.18).clamp(0.0, 1.0),
-                (nb * 0.82 + s_curve(nb.clamp(0.0, 1.0)) * 0.18 * 1.02).clamp(0.0, 1.0)
-            )
-        }
-        "viv_summer" => {
-            // Verano: cielo azul radiante y piel bronceada cálida
-            let sat = 1.28;
-            let nr = (luma + (r - luma) * sat) * 1.06;
-            let ng = (luma + (g - luma) * sat) * 1.01;
-            let nb = (luma + (b - luma) * sat) * 1.08;
-            (nr.clamp(0.0, 1.0), ng.clamp(0.0, 1.0), nb.clamp(0.0, 1.0))
-        }
-        "viv_editorial" => {
-            // Portada de revista: negros profundos, brillo especular definido
-            let s_curve = |c: f32| c * c * (3.0 - 2.0 * c);
-            let nr = s_curve(r.clamp(0.0, 1.0));
-            let ng = s_curve(g.clamp(0.0, 1.0));
-            let nb = s_curve(b.clamp(0.0, 1.0));
-            let sat = 1.22;
-            let l = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
-            ((l + (nr - l) * sat).clamp(0.0, 1.0), (l + (ng - l) * sat).clamp(0.0, 1.0), (l + (nb - l) * sat).clamp(0.0, 1.0))
-        }
-        "viv_candy" => {
-            // Candy: magentas dulces y tonos dorados luminosos
-            let nr = r * 1.08;
-            let ng = g * 0.98;
-            let nb = b * 1.08;
-            let sat = 1.25;
-            let l = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
-            ((l + (nr - l) * sat).clamp(0.0, 1.0), (l + (ng - l) * sat).clamp(0.0, 1.0), (l + (nb - l) * sat).clamp(0.0, 1.0))
-        }
-        "viv_tropical" => {
-            // Tropical: vegetación exuberante y calidez luminosa
-            let nr = r * 1.08;
-            let ng = g * 1.07;
-            let nb = b * 0.96;
-            let sat = 1.26;
-            let l = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
-            ((l + (nr - l) * sat).clamp(0.0, 1.0), (l + (ng - l) * sat).clamp(0.0, 1.0), (l + (nb - l) * sat).clamp(0.0, 1.0))
-        }
-        "viv_neon" => {
-            // Neón Punch: alto contraste ciberpunk vibrante
-            let sat = 1.40;
-            let nr = (luma + (r - luma) * sat) * 1.05;
-            let ng = (luma + (g - luma) * sat) * 1.00;
-            let nb = (luma + (b - luma) * sat) * 1.10;
-            let s_curve = |c: f32| c * c * (3.0 - 2.0 * c);
-            (
-                (nr * 0.75 + s_curve(nr.clamp(0.0, 1.0)) * 0.25).clamp(0.0, 1.0),
-                (ng * 0.75 + s_curve(ng.clamp(0.0, 1.0)) * 0.25).clamp(0.0, 1.0),
-                (nb * 0.75 + s_curve(nb.clamp(0.0, 1.0)) * 0.25).clamp(0.0, 1.0)
-            )
-        }
-
-        // ==========================================
-        // 4. CATEGORÍA: ONÍRICO (Dreamy / Ethereal)
-        // ==========================================
-        "oni_fairy_tale" => {
-            // Cuento de hadas: niebla esmeralda y dorada sutil, difusión de altas luces
-            let bloom = 4.0 * luma * (1.0 - luma) * 0.07;
-            let nr = (r * 1.05 + bloom).clamp(0.0, 1.0);
-            let ng = (g * 1.03 + bloom * 0.9).clamp(0.0, 1.0);
-            let nb = (b * 0.95 + bloom * 0.5).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-        "oni_champagne" => {
-            // Champaña: velo dorado cremoso y elegante
-            let nr = r * 1.07 + 0.035;
-            let ng = g * 1.04 + 0.025;
-            let nb = b * 0.94 + 0.010;
-            (nr.clamp(0.0, 1.0), ng.clamp(0.0, 1.0), nb.clamp(0.0, 1.0))
-        }
-        "oni_rose_dream" => {
-            // Rosa cuarzo: bruma pastel rosada romántica
-            let mid = 4.0 * luma * (1.0 - luma) * 0.06;
-            let nr = (r * 1.03 + mid).clamp(0.0, 1.0);
-            let ng = (g * 0.98 + mid * 0.4).clamp(0.0, 1.0);
-            let nb = (b * 1.04 + mid * 0.8).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-        "oni_angelic" => {
-            // Luz angelical: blancos etéreos elevados, halo luminoso suave
-            let hi = (luma * luma) * 0.12;
-            let nr = (r * 1.02 + hi).clamp(0.0, 1.0);
-            let ng = (g * 1.01 + hi).clamp(0.0, 1.0);
-            let nb = (b * 1.05 + hi).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-        "oni_mist" => {
-            // Niebla suave: negros mate elevados, contraste atenuado
-            let toe = 0.055 * (1.0 - luma);
-            let nr = (r * 0.94 + toe).clamp(0.0, 1.0);
-            let ng = (g * 0.94 + toe).clamp(0.0, 1.0);
-            let nb = (b * 0.98 + toe * 1.2).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-        "oni_magic_glow" => {
-            // Brillo mágico: resplandor dorado cálido en medios tonos
-            let glow = 4.0 * luma * (1.0 - luma) * 0.085;
-            let nr = (r + glow * 1.2).clamp(0.0, 1.0);
-            let ng = (g + glow * 0.9).clamp(0.0, 1.0);
-            let nb = (b + glow * 0.4).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-
-        // ==========================================
-        // 5. CATEGORÍA: VINTAGE
-        // ==========================================
-        "vin_kodak_portra" => {
-            // Kodak Portra 400: calidez analógica, negros aterciopelados
-            let toe = 0.032 * (1.0 - luma).powi(2);
-            let nr = (r * 1.09 + toe).clamp(0.0, 1.0);
-            let ng = (g * 1.02 + toe).clamp(0.0, 1.0);
-            let nb = (b * 0.93 + toe * 0.6).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-        "vin_fuji_velvia" => {
-            // Fuji Velvia: contraste analógico fuerte, verdes esmeralda y sombras ricas
-            let s_curve = |c: f32| c * c * (3.0 - 2.0 * c);
-            let nr = s_curve(r.clamp(0.0, 1.0)) * 1.02;
-            let ng = s_curve(g.clamp(0.0, 1.0)) * 1.05;
-            let nb = s_curve(b.clamp(0.0, 1.0)) * 0.96;
-            let sat = 1.18;
-            let l = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
-            ((l + (nr - l) * sat).clamp(0.0, 1.0), (l + (ng - l) * sat).clamp(0.0, 1.0), (l + (nb - l) * sat).clamp(0.0, 1.0))
-        }
-        "vin_retro_90s" => {
-            // Retro 90s: camcorder VHS nostálgico, tonalidad cálida vintage
-            let toe = 0.04 * (1.0 - luma);
-            let nr = (r * 1.04 + toe).clamp(0.0, 1.0);
-            let ng = (g * 1.00 + toe * 0.9).clamp(0.0, 1.0);
-            let nb = (b * 0.88 + toe * 0.5).clamp(0.0, 1.0);
-            let sat = 0.92;
-            let l = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
-            ((l + (nr - l) * sat).clamp(0.0, 1.0), (l + (ng - l) * sat).clamp(0.0, 1.0), (l + (nb - l) * sat).clamp(0.0, 1.0))
-        }
-        "vin_noir_classic" => {
-            // Blanco y negro Noir clásico: alto contraste monocromático de película argéntica
-            let mono = 0.299 * r + 0.587 * g + 0.114 * b;
-            let c_mono = mono.clamp(0.0, 1.0);
-            let s = c_mono * c_mono * (3.0 - 2.0 * c_mono);
-            let final_mono = s.clamp(0.0, 1.0);
-            (final_mono, final_mono, final_mono)
-        }
-        "vin_sepia_antique" => {
-            // Sepia del siglo XIX: chocolate y ámbar cálido
-            let mono = (0.299 * r + 0.587 * g + 0.114 * b).clamp(0.0, 1.0);
-            (
-                (mono * 1.18).clamp(0.0, 1.0),
-                (mono * 0.94).clamp(0.0, 1.0),
-                (mono * 0.72).clamp(0.0, 1.0),
-            )
-        }
-        "vin_cyberpunk" => {
-            // Cyberpunk 80s: sombras cian profundo y altas luces magenta neón
-            let sh = (1.0 - luma).clamp(0.0, 1.0);
-            let hi = luma.clamp(0.0, 1.0);
-            let nr = (r - sh * 0.06 + hi * 0.14).clamp(0.0, 1.0);
-            let ng = (g + sh * 0.05 - hi * 0.03).clamp(0.0, 1.0);
-            let nb = (b + sh * 0.14 + hi * 0.06).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-        "vin_polaroid" => {
-            // Polaroid 600: instantánea analógica, sombras mate levantadas, tinte cálido
-            let toe = 0.045 * (1.0 - luma);
-            let nr = (r * 1.06 + toe).clamp(0.0, 1.0);
-            let ng = (g * 1.02 + toe * 0.8).clamp(0.0, 1.0);
-            let nb = (b * 0.90 + toe * 0.4).clamp(0.0, 1.0);
-            (nr, ng, nb)
-        }
-
-        _ => (r, g, b),
-    }
-}
-
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-pub struct LineSegment2D {
-    pub ax: f32,
-    pub ay: f32,
-    pub bx: f32,
-    pub by: f32,
-    pub abx: f32,
-    pub aby: f32,
-    pub inv_len_sq: f32,
-}
-
-impl LineSegment2D {
-    #[inline(always)]
-    pub fn new(ax: f32, ay: f32, bx: f32, by: f32) -> Self {
-        let abx = bx - ax;
-        let aby = by - ay;
-        let len_sq = abx * abx + aby * aby;
-        let inv_len_sq = if len_sq > 1e-5 { 1.0 / len_sq } else { 0.0 };
-        Self { ax, ay, bx, by, abx, aby, inv_len_sq }
-    }
-
-    #[inline(always)]
-    pub fn distance_and_side(&self, px: f32, py: f32) -> (f32, f32) {
-        let apx = px - self.ax;
-        let apy = py - self.ay;
-        let t = ((apx * self.abx + apy * self.aby) * self.inv_len_sq).clamp(0.0, 1.0);
-        let proj_x = self.ax + t * self.abx;
-        let proj_y = self.ay + t * self.aby;
-        let dx = px - proj_x;
-        let dy = py - proj_y;
-        let dist = (dx * dx + dy * dy).sqrt();
-        let cross = self.abx * apy - self.aby * apx;
-        (dist, cross)
-    }
-}
-
-/// Interpolación lineal exacta de la curva del párpado (9 vértices ordenados de izquierda a derecha en X).
-#[inline(always)]
-fn sample_lid_y(pts: &[(f32, f32); 9], px: f32) -> f32 {
-    if px <= pts[0].0 {
-        return pts[0].1;
-    }
-    if px >= pts[8].0 {
-        return pts[8].1;
-    }
-    for i in 0..8 {
-        let (x0, y0) = pts[i];
-        let (x1, y1) = pts[i + 1];
-        if px >= x0 && px <= x1 {
-            let dx = x1 - x0;
-            if dx > 1e-4 {
-                return y0 + ((px - x0) / dx) * (y1 - y0);
-            } else {
-                return (y0 + y1) * 0.5;
-            }
-        }
-    }
-    pts[4].1
-}
-
-/// Interpolación lineal exacta de las 4 curvas de los labios (11 vértices ordenados de comisura izquierda a derecha).
-#[inline(always)]
-fn sample_lip_y(pts: &[(f32, f32); 11], px: f32) -> f32 {
-    if px <= pts[0].0 {
-        return pts[0].1;
-    }
-    if px >= pts[10].0 {
-        return pts[10].1;
-    }
-    for i in 0..10 {
-        let (x0, y0) = pts[i];
-        let (x1, y1) = pts[i + 1];
-        if px >= x0 && px <= x1 {
-            let dx = x1 - x0;
-            if dx > 1e-4 {
-                return y0 + ((px - x0) / dx) * (y1 - y0);
-            } else {
-                return (y0 + y1) * 0.5;
-            }
-        }
-    }
-    pts[5].1
-}
-
-/// Muestreo bilineal sub-píxel continuo para Sprites RGBA 256x256 de Pupilentes (.png).
-#[inline(always)]
-fn sample_sprite_bilinear_256(sprite: &[[f32; 4]], fx: f32, fy: f32) -> [f32; 4] {
-    let x = fx.clamp(0.0, 255.0);
-    let y = fy.clamp(0.0, 255.0);
-    let x0 = x.floor() as usize;
-    let y0 = y.floor() as usize;
-    let x1 = (x0 + 1).min(255);
-    let y1 = (y0 + 1).min(255);
-    let tx = x - x0 as f32;
-    let ty = y - y0 as f32;
-
-    let c00 = sprite[y0 * 256 + x0];
-    let c10 = sprite[y0 * 256 + x1];
-    let c01 = sprite[y1 * 256 + x0];
-    let c11 = sprite[y1 * 256 + x1];
-
-    let mut out = [0.0f32; 4];
-    for c in 0..4 {
-        let top = c00[c] * (1.0 - tx) + c10[c] * tx;
-        let bot = c01[c] * (1.0 - tx) + c11[c] * tx;
-        out[c] = top * (1.0 - ty) + bot * ty;
-    }
-    out
-}
-
-/// Muestreo bilineal sub-píxel continuo para el Sprite Deformable de Labios 128x64 (0..31 upper, 32..63 lower).
-#[inline(always)]
-fn sample_lip_sprite_bilinear(sprite: &[[f32; 4]], u_norm: f32, v_norm: f32, row_offset: usize) -> [f32; 4] {
-    let fx = (u_norm * 127.0).clamp(0.0, 127.0);
-    let fy = (v_norm * 31.0).clamp(0.0, 31.0);
-    let x0 = fx.floor() as usize;
-    let y0 = fy.floor() as usize;
-    let x1 = (x0 + 1).min(127);
-    let y1 = (y0 + 1).min(31);
-    let tx = fx - x0 as f32;
-    let ty = fy - y0 as f32;
-
-    let r0 = row_offset + y0;
-    let r1 = row_offset + y1;
-    let c00 = sprite[r0 * 128 + x0];
-    let c10 = sprite[r0 * 128 + x1];
-    let c01 = sprite[r1 * 128 + x0];
-    let c11 = sprite[r1 * 128 + x1];
-
-    let mut out = [0.0f32; 4];
-    for c in 0..4 {
-        let top = c00[c] * (1.0 - tx) + c10[c] * tx;
-        let bot = c01[c] * (1.0 - tx) + c11[c] * tx;
-        out[c] = top * (1.0 - ty) + bot * ty;
-    }
-    out
-}
-
-/// Carga un Sprite RGBA 256x256 (.png) desde disco (`sprites/lenses/{name}.png`) o desde el recurso embebido.
-fn load_lens_sprite_png(name: &str, embedded_png: &[u8]) -> Vec<[f32; 4]> {
-    let mut disk_img = None;
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(parent) = exe_path.parent() {
-            let candidate = parent.join("sprites").join("lenses").join(format!("{}.png", name));
-            if candidate.exists() {
-                if let Ok(img) = image::open(&candidate) {
-                    disk_img = Some(img);
-                }
-            }
-        }
-    }
-    let dyn_img = disk_img.or_else(|| image::load_from_memory(embedded_png).ok());
-    let mut buf = vec![[0.0f32; 4]; 256 * 256];
-    if let Some(img) = dyn_img {
-        let rgba = img.to_rgba8();
-        let (w, h) = rgba.dimensions();
-        for y in 0..256usize {
-            let sy = ((y * h as usize) / 256).min(h.saturating_sub(1) as usize) as u32;
-            for x in 0..256usize {
-                let sx = ((x * w as usize) / 256).min(w.saturating_sub(1) as usize) as u32;
-                let px = rgba.get_pixel(sx, sy).0;
-                buf[y * 256 + x] = [
-                    px[0] as f32 / 255.0,
-                    px[1] as f32 / 255.0,
-                    px[2] as f32 / 255.0,
-                    px[3] as f32 / 255.0,
-                ];
-            }
-        }
-    }
-    buf
-}
-
-/// Localizador óptico de disco circular de iris (centro sub-píxel + radio exacto) inmune a reflejos (catchlights).
-/// Construye un perfil horizontal inmune a brillos especulares en la franja media-inferior de la apertura
-/// palpebral (libre de pestañas superiores), localiza los picos de esclerótica izquierda y derecha y mide
-/// los bordes limbares exactos (x_L, x_R) para que el pupilente case al 100% con el círculo real del ojo.
-fn locate_iris_disc(
-    upper_pts: &[(f32, f32); 9],
-    lower_pts: &[(f32, f32); 9],
-    input_rgba: &[u8],
-    width: usize,
-    height: usize,
-) -> (f32, f32, f32, f32, f32) {
-    let left_x = upper_pts[0].0.min(lower_pts[0].0);
-    let right_x = upper_pts[8].0.max(lower_pts[8].0);
-    let eye_w = (right_x - left_x).max(8.0);
-
-    // Centro anatómico del arco corneal (excluyendo el sesgo horizontal del lagrimal interno 133/362)
-    let arch_mid_x = (upper_pts[3].0
-        + upper_pts[4].0 * 2.0
-        + upper_pts[5].0
-        + lower_pts[3].0
-        + lower_pts[4].0 * 2.0
-        + lower_pts[5].0)
-        * 0.125;
-
-    let top_mid_y = sample_lid_y(upper_pts, arch_mid_x);
-    let bot_mid_y = sample_lid_y(lower_pts, arch_mid_x);
-    let eye_h = (bot_mid_y - top_mid_y).max(2.0);
-    let mid_y = (top_mid_y + bot_mid_y) * 0.5;
-    let r_anat = (eye_w * 0.212).max(eye_h * 0.48).clamp(4.0, 28.0);
-
-    if eye_h < eye_w * 0.12 || input_rgba.len() < width * height * 4 {
-        return (arch_mid_x, mid_y, r_anat, 0.12, 0.38);
-    }
-
-    let sample_luma = |fx: f32, fy: f32| -> f32 {
-        let ix = (fx.round() as i32).clamp(0, width as i32 - 1) as usize;
-        let iy = (fy.round() as i32).clamp(0, height as i32 - 1) as usize;
-        let idx = (iy * width + ix) * 4;
-        let r = input_rgba[idx] as f32 * (1.0 / 255.0);
-        let g = input_rgba[idx + 1] as f32 * (1.0 / 255.0);
-        let b = input_rgba[idx + 2] as f32 * (1.0 / 255.0);
-        0.2126 * r + 0.7152 * g + 0.0722 * b
-    };
-
-    // Perfil horizontal de 41 columnas en [left_x + 0.10*eye_w, right_x - 0.10*eye_w].
-    // En cada columna vertical se toman 5 muestras en la banda [36%..88%] de la altura local
-    // y se promedian el 2º y 3er valor más oscuro (percentil 30-50%), eliminando al 100%
-    // cualquier reflejo blanco (catchlight de monitor/aro de luz) dentro de la pupila/iris.
-    const N: usize = 41;
-    let x_start = left_x + eye_w * 0.10;
-    let x_end = right_x - eye_w * 0.10;
-    let x_span = (x_end - x_start).max(4.0);
-    let mut xs = [0.0_f32; N];
-    let mut profile = [0.0_f32; N];
-
-    for i in 0..N {
-        let cx = x_start + (i as f32 / (N - 1) as f32) * x_span;
-        xs[i] = cx;
-        let yt = sample_lid_y(upper_pts, cx);
-        let yb = sample_lid_y(lower_pts, cx);
-        let lh = (yb - yt).max(2.0);
-        let y0 = yt + lh * 0.36;
-        let y1 = (yb - lh * 0.12).max(y0 + 0.5);
-
-        let mut v = [0.0_f32; 5];
-        for k in 0..5 {
-            let sy = y0 + (k as f32 * 0.25) * (y1 - y0);
-            v[k] = sample_luma(cx, sy);
-        }
-        // Ordenamiento rápido de 5 elementos (insertion sort en registros)
-        for a in 1..5 {
-            let key = v[a];
-            let mut b = a;
-            while b > 0 && v[b - 1] > key {
-                v[b] = v[b - 1];
-                b -= 1;
-            }
-            v[b] = key;
-        }
-        profile[i] = 0.5 * (v[1] + v[2]);
-    }
-
-    // 1. Encontrar el centro del valle oscuro del iris en la ventana central [26%..74%]
-    let mut i_min = N / 2;
-    let mut min_val = 999.0_f32;
-    for i in 11..30 {
-        let smooth_p = 0.25 * (profile[i - 1] + 2.0 * profile[i] + profile[i + 1]);
-        let dist_arch = ((xs[i] - arch_mid_x) / (eye_w * 0.35)).abs();
-        let cost = smooth_p + 0.015 * dist_arch * dist_arch;
-        if cost < min_val {
-            min_val = cost;
-            i_min = i;
-        }
-    }
-    let p_iris = profile[i_min];
-
-    // 2. Encontrar el pico brillante de la Esclerótica Izquierda y Derecha adyacentes al iris
-    let l_search_start = i_min.saturating_sub(16);
-    let l_search_end = i_min.saturating_sub(2).max(l_search_start + 1);
-    let mut i_scl_l = l_search_start;
-    let mut p_scl_l = profile[l_search_start];
-    for i in l_search_start..=l_search_end {
-        if profile[i] > p_scl_l {
-            p_scl_l = profile[i];
-            i_scl_l = i;
-        }
-    }
-
-    let r_search_start = (i_min + 2).min(N - 1);
-    let r_search_end = (i_min + 16).min(N - 1);
-    let mut i_scl_r = r_search_end;
-    let mut p_scl_r = profile[r_search_start];
-    for i in r_search_start..=r_search_end {
-        if profile[i] > p_scl_r {
-            p_scl_r = profile[i];
-            i_scl_r = i;
-        }
-    }
-
-    // 3. Interpolación sub-píxel de los bordes limbares izquierdo (x_l) y derecho (x_r)
-    let th_l = p_iris + 0.45 * (p_scl_l - p_iris).max(0.04);
-    let mut x_l = xs[i_scl_l];
-    let mut idx = i_min;
-    while idx > i_scl_l {
-        if profile[idx - 1] >= th_l {
-            let denom = (profile[idx - 1] - profile[idx]).max(1e-4);
-            let frac = ((th_l - profile[idx]) / denom).clamp(0.0, 1.0);
-            x_l = xs[idx] - frac * (xs[idx] - xs[idx - 1]);
-            break;
-        }
-        idx -= 1;
-    }
-
-    let th_r = p_iris + 0.45 * (p_scl_r - p_iris).max(0.04);
-    let mut x_r = xs[i_scl_r];
-    for i in i_min..i_scl_r {
-        if profile[i + 1] >= th_r {
-            let denom = (profile[i + 1] - profile[i]).max(1e-4);
-            let frac = ((th_r - profile[i]) / denom).clamp(0.0, 1.0);
-            x_r = xs[i] + frac * (xs[i + 1] - xs[i]);
-            break;
-        }
-    }
-
-    let c_l = p_scl_l - p_iris;
-    let c_r = p_scl_r - p_iris;
-    let (cx, iris_rad) = if c_l >= 0.035 && c_r >= 0.035 {
-        let det_cx = 0.5 * (x_l + x_r);
-        let det_r = 0.5 * (x_r - x_l) * 1.02;
-        let r_blend = (0.72 * det_r + 0.28 * r_anat).clamp(eye_w * 0.195, eye_w * 0.236);
-        (det_cx, r_blend)
-    } else if c_l >= 0.035 {
-        let r_use = r_anat.clamp(eye_w * 0.195, eye_w * 0.230);
-        (x_l + r_use, r_use)
-    } else if c_r >= 0.035 {
-        let r_use = r_anat.clamp(eye_w * 0.195, eye_w * 0.230);
-        (x_r - r_use, r_use)
-    } else {
-        let r_use = r_anat.clamp(eye_w * 0.195, eye_w * 0.230);
-        (arch_mid_x, r_use)
-    };
-
-    // 4. Centro vertical anatómico del círculo del iris:
-    // El borde inferior del iris descansa junto al párpado inferior (y_bot_cut) mientras
-    // el párpado superior (y_top_cut) recorta limpiamente el ~15-25% superior del círculo.
-    let y_t_cx = sample_lid_y(upper_pts, cx);
-    let y_b_cx = sample_lid_y(lower_pts, cx);
-    let h_cx = (y_b_cx - y_t_cx).max(2.0);
-    let y_top_cut = y_t_cx + 0.085 * h_cx;
-    let y_bot_cut = y_b_cx - 0.020 * h_cx;
-    let cy = (y_bot_cut - 0.86 * iris_rad).clamp(
-        y_top_cut + 0.36 * iris_rad,
-        (y_bot_cut - 0.74 * iris_rad).max(y_top_cut + 0.36 * iris_rad),
-    );
-
-    let sclera_lum = c_l.min(c_r).max(0.06) + p_iris;
-    (cx, cy, iris_rad.clamp(4.0, 28.0), p_iris, sclera_lum)
-}
-
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-pub struct EyeAccentParams {
-    pub min_x: f32,
-    pub max_x: f32,
-    pub min_y: f32,
-    pub max_y: f32,
-    pub left_x: f32,
-    pub right_x: f32,
-    pub upper_pts: [(f32, f32); 9],
-    pub lower_pts: [(f32, f32); 9],
-    pub pupil_x: f32,
-    pub pupil_y: f32,
-    pub iris_rad: f32,
-    pub inv_iris_rad: f32,
-    pub iris_lum: f32,
-    pub sclera_lum: f32,
-    pub hl1_x: f32,
-    pub hl1_y: f32,
-    pub r_spec1_sq: f32,
-    pub inv_r_spec1: f32,
-    pub hl2_x: f32,
-    pub hl2_y: f32,
-    pub r_spec2_sq: f32,
-    pub inv_r_spec2: f32,
-    pub segments: [LineSegment2D; 9],
-    pub lower_segments: [LineSegment2D; 8],
-    pub is_viewer_left: bool,
-    pub inner_x: f32,
-    pub outer_x: f32,
-    pub inv_eye_width: f32,
-    pub eye_h: f32,
-}
-
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-pub struct EyeMorphParams {
-    pub cx: f32,
-    pub cy: f32,
-    pub rx: f32,
-    pub h_top: f32,
-    pub h_bot: f32,
-    pub limit_y_top: f32,
-    pub limit_y_bot: f32,
-}
-
-#[inline(always)]
-fn warp_eye(
-    px: f32,
-    py: f32,
-    eye: &EyeMorphParams,
-    eye_enlarge: f32,
-    eye_round: f32,
-    sx: &mut f32,
-    sy: &mut f32,
-) {
-    let dx = px - eye.cx;
-    let dy = py - eye.cy;
-
-    let max_rx = eye.rx * 1.35;
-    let abs_dx = dx.abs();
-    if abs_dx >= max_rx {
-        return;
-    }
-
-    // Radio vertical asimétrico: limitado estrictamente antes de la ceja
-    let ry = if dy < 0.0 { eye.limit_y_top } else { eye.limit_y_bot };
-    let abs_dy = dy.abs();
-    if abs_dy >= ry {
-        return;
-    }
-
-    let norm_x = abs_dx / max_rx;
-    let norm_y = abs_dy / ry;
-    let r_sq = norm_x * norm_x + norm_y * norm_y;
-    if r_sq >= 1.0 {
-        return;
-    }
-
-    // Decaimiento bi-cuadrático C^1 suave: 1.0 en la pupila, 0.0 en el borde sin saltos
-    let factor = (1.0 - r_sq).powi(2);
-
-    // Magnificación continua e isotrópica en el núcleo del iris para mantener el círculo 100% redondo:
-    let wx = (0.30 * eye_enlarge + 0.12 * eye_round) * factor;
-    let wy = if dy < 0.0 {
-        (0.34 * eye_enlarge + 0.15 * eye_round) * factor
-    } else {
-        (0.28 * eye_enlarge + 0.12 * eye_round) * factor
-    };
-
-    *sx -= dx * wx;
-    *sy -= dy * wy;
-}
-
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-pub struct LipSpriteParams {
-    pub min_x: f32,
-    pub max_x: f32,
-    pub min_y: f32,
-    pub max_y: f32,
-    pub left_x: f32,
-    pub right_x: f32,
-    pub inv_lip_width: f32,
-    pub outer_top: [(f32, f32); 11],
-    pub inner_top: [(f32, f32); 11],
-    pub inner_bot: [(f32, f32); 11],
-    pub outer_bot: [(f32, f32); 11],
-}
+pub use color::*;
+pub use geometry::*;
+pub use sprites::*;
+pub use eyes::*;
+pub use eyebrows::*;
+pub use lips::*;
+pub use photometry::*;
 
 pub struct VideoProcessor {
     width: usize,
@@ -859,6 +40,17 @@ pub struct VideoProcessor {
     /// Sprites RGBA 256x256 (.png) de Pupilentes con fibras de iris, criptas alfa, collarette y agujero de pupila:
     /// [0]=honey, [1]=hazel, [2]=emerald, [3]=ice_blue, [4]=sapphire, [5]=gray, [6]=violet
     lens_sprites_rgba: Vec<Vec<[f32; 4]>>,
+    /// Sprites RGBA 256x256 (.png) de Sombras de Ojos deformables con canal Alpha:
+    /// [0]=natural_nude, [1]=smoky_glam, [2]=cat_wing, [3]=sunset_glow
+    eyeshadow_sprites_rgba: Vec<Vec<[f32; 4]>>,
+    /// Sprites RGBA 256x128 (.png) de Cejas Microblading / Ombré con canal Alpha:
+    /// [0]=natural_fill, [1]=defined_arch, [2]=korean_straight, [3]=fluffy_feathered
+    #[allow(dead_code)]
+    eyebrow_sprites_rgba: Vec<Vec<[f32; 4]>>,
+    /// Motor de Renderizado 3D de Malla Facial Canónica UV (468 vértices, 898 triángulos)
+    face_mesh_renderer: FaceMeshRenderer,
+    /// Textura Maestra de Maquillaje RGBA 1024x1024 (Cejas, Ojeras, Sombras, Rubor, Labios)
+    master_makeup_rgba: Vec<[f32; 4]>,
     /// Sprite 2D pre-generado 128x128 de soporte para modo Luz de Iris sin color
     contact_lens_sprite: Vec<[f32; 4]>,
     /// Estabilizador temporal adaptativo 1€ de los discos de iris [(cx, cy, rad, iris_lum, sclera_lum); 2]
@@ -871,6 +63,12 @@ pub struct VideoProcessor {
     lip_sprite: Vec<[f32; 4]>,
     /// Estabilizador temporal adaptativo 1€ de las 4 curvas de labios (elimina micro-temblor al 100% de opacidad)
     smoothed_lip_curves: Option<[[(f32, f32); 11]; 4]>,
+    /// Malla 3D Low-Poly de Cuernos de Diablo (.obj Wavefront)
+    devil_horns_mesh: Mesh3D,
+    /// Motor de Renderizado 3D de Mallas con Z-Buffer y Shading Blinn-Phong/Fresnel
+    mesh3d_renderer: Mesh3DRenderer,
+    /// Orientación 3D suavizada (Yaw, Pitch, Roll, Centro 3D)
+    smoothed_head_pose: Option<SmoothedHeadPose3D>,
     // Amortiguación cinemática EMA (SnapJM / iPhone ISP) para cero parpadeo
     current_exp_gain: f32,
     current_wb_r: f32,
@@ -885,19 +83,6 @@ pub struct VideoProcessor {
     locked_contrast: f32,
     lighting_hold_frames: u32,
     lighting_initialized: bool,
-}
-
-pub struct PhotometricStats {
-    pub detected_luma: f32,
-    pub auto_exposure: f32,
-    pub auto_wb: f32,
-    #[allow(dead_code)]
-    pub auto_contrast: f32,
-    pub recommended_exposure: f32,
-    pub recommended_contrast: f32,
-    pub recommended_saturation: f32,
-    pub recommended_sharpness: f32,
-    pub recommended_wb: f32,
 }
 
 impl VideoProcessor {
@@ -921,103 +106,51 @@ impl VideoProcessor {
 
         // Carga de los 7 recursos gráficos reales (.png RGBA 256x256) de Pupilentes con canal Alpha
         let lens_sprites_rgba = vec![
-            load_lens_sprite_png("honey", include_bytes!("../assets/sprites/lenses/honey.png")),
-            load_lens_sprite_png("hazel", include_bytes!("../assets/sprites/lenses/hazel.png")),
-            load_lens_sprite_png("emerald", include_bytes!("../assets/sprites/lenses/emerald.png")),
-            load_lens_sprite_png("ice_blue", include_bytes!("../assets/sprites/lenses/ice_blue.png")),
-            load_lens_sprite_png("sapphire", include_bytes!("../assets/sprites/lenses/sapphire.png")),
-            load_lens_sprite_png("gray", include_bytes!("../assets/sprites/lenses/gray.png")),
-            load_lens_sprite_png("violet", include_bytes!("../assets/sprites/lenses/violet.png")),
+            load_rgba_sprite("lenses", "honey", include_bytes!("../assets/sprites/lenses/honey.png"), 256, 256),
+            load_rgba_sprite("lenses", "hazel", include_bytes!("../assets/sprites/lenses/hazel.png"), 256, 256),
+            load_rgba_sprite("lenses", "emerald", include_bytes!("../assets/sprites/lenses/emerald.png"), 256, 256),
+            load_rgba_sprite("lenses", "ice_blue", include_bytes!("../assets/sprites/lenses/ice_blue.png"), 256, 256),
+            load_rgba_sprite("lenses", "sapphire", include_bytes!("../assets/sprites/lenses/sapphire.png"), 256, 256),
+            load_rgba_sprite("lenses", "gray", include_bytes!("../assets/sprites/lenses/gray.png"), 256, 256),
+            load_rgba_sprite("lenses", "violet", include_bytes!("../assets/sprites/lenses/violet.png"), 256, 256),
         ];
 
-        // Pre-generación del Sprite 128x128 de soporte (para Luz de Iris sin color)
-        let mut contact_lens_sprite = vec![[0.0f32; 4]; 128 * 128];
-        for iy in 0..128 {
-            let v = (iy as f32 - 63.5) / 60.0;
-            for ix in 0..128 {
-                let u = (ix as f32 - 63.5) / 60.0;
-                let r = (u * u + v * v).sqrt();
-                if r <= 1.03 {
-                    let theta = v.atan2(u);
-                    let t_pupil = ((r - 0.38) / 0.10).clamp(0.0, 1.0);
-                    let pupil_open = t_pupil * t_pupil * (3.0 - 2.0 * t_pupil);
-                    let t_outer = ((1.02 - r) / 0.10).clamp(0.0, 1.0);
-                    let outer_edge = t_outer * t_outer * (3.0 - 2.0 * t_outer);
-                    let lens_alpha = pupil_open * outer_edge;
+        // Carga de los 7 recursos gráficos reales (.png RGBA 256x256) de Sombras de Ojos con canal Alpha
+        let eyeshadow_sprites_rgba = vec![
+            load_rgba_sprite("eyeshadow", "natural_nude", include_bytes!("../assets/sprites/eyeshadow/natural_nude.png"), 256, 256),
+            load_rgba_sprite("eyeshadow", "smoky_glam", include_bytes!("../assets/sprites/eyeshadow/smoky_glam.png"), 256, 256),
+            load_rgba_sprite("eyeshadow", "cat_wing", include_bytes!("../assets/sprites/eyeshadow/cat_wing.png"), 256, 256),
+            load_rgba_sprite("eyeshadow", "sunset_glow", include_bytes!("../assets/sprites/eyeshadow/sunset_glow.png"), 256, 256),
+            load_rgba_sprite("eyeshadow", "grunge_kohl", include_bytes!("../assets/sprites/eyeshadow/grunge_kohl.png"), 256, 256),
+            load_rgba_sprite("eyeshadow", "foxy_glam", include_bytes!("../assets/sprites/eyeshadow/foxy_glam.png"), 256, 256),
+            load_rgba_sprite("eyeshadow", "glitter_pop", include_bytes!("../assets/sprites/eyeshadow/glitter_pop.png"), 256, 256),
+        ];
 
-                    let f1 = (theta * 28.0 + (r * 6.5).sin() * 0.35).sin();
-                    let f2 = (theta * 52.0 - (r * 9.0).cos() * 0.28).cos();
-                    let f3 = (theta * 84.0 + r * 4.0).sin();
-                    let radial_spokes = (0.50 + 0.28 * f1 + 0.14 * f2 + 0.08 * f3).clamp(0.10, 1.0);
+        // Carga de los 4 recursos gráficos reales (.png RGBA 256x128) de Cejas Microblading / Ombré con canal Alpha
+        let eyebrow_sprites_rgba = vec![
+            load_rgba_sprite("eyebrows", "natural_fill", include_bytes!("../assets/sprites/eyebrows/natural_fill.png"), 256, 128),
+            load_rgba_sprite("eyebrows", "defined_arch", include_bytes!("../assets/sprites/eyebrows/defined_arch.png"), 256, 128),
+            load_rgba_sprite("eyebrows", "korean_straight", include_bytes!("../assets/sprites/eyebrows/korean_straight.png"), 256, 128),
+            load_rgba_sprite("eyebrows", "fluffy_feathered", include_bytes!("../assets/sprites/eyebrows/fluffy_feathered.png"), 256, 128),
+        ];
 
-                    let ring_t = ((r - 0.38) / 0.56).clamp(0.0, 1.0);
-                    let ring_bell = (ring_t * std::f32::consts::PI).sin();
-                    let fiber_lum = (radial_spokes * (0.42 + 0.58 * ring_bell)).clamp(0.0, 1.0);
+        // Carga de la Textura Maestra de Maquillaje RGBA 1024x1024 (Classic Oil / Canónica 3D)
+        let master_makeup_rgba = load_rgba_sprite(
+            "makeup",
+            "classic_oil",
+            include_bytes!("../assets/sprites/makeup/classic_oil.png"),
+            1024,
+            1024,
+        );
+        let face_mesh_renderer = FaceMeshRenderer::new(width, height);
 
-                    let col_t = (1.0 - ((r - 0.46).abs() / 0.08)).clamp(0.0, 1.0);
-                    let collarette = col_t * col_t * (0.65 + 0.35 * f1.abs());
+        // Carga de Mallas 3D Low-Poly y Renderizador con Z-Buffer (Efectos / AR Props)
+        let devil_horns_mesh = Mesh3D::from_obj_str(include_str!("../assets/models/devil_horns.obj"));
+        let mesh3d_renderer = Mesh3DRenderer::new(width, height);
 
-                    let limb_in = ((r - 0.82) / 0.12).clamp(0.0, 1.0);
-                    let limb_dots = 0.78 + 0.22 * (theta * 64.0).cos();
-                    let limbal_darkness = (limb_in * limb_in * outer_edge * limb_dots).clamp(0.0, 1.0);
-
-                    contact_lens_sprite[iy * 128 + ix] = [fiber_lum, collarette, limbal_darkness, lens_alpha];
-                }
-            }
-        }
-
-        // Pre-generación del Sprite 128x64 de Labios (Deformable en 4 curvas con interpolación bilineal)
-        let mut lip_sprite = vec![[0.0f32; 4]; 128 * 64];
-        for iy in 0..64 {
-            let is_upper = iy < 32;
-            let v_local = if is_upper {
-                iy as f32 / 31.0 // 0.0 = borde superior (arco de Cupido), 1.0 = línea interior superior
-            } else {
-                (iy - 32) as f32 / 31.0 // 0.0 = línea interior inferior, 1.0 = borde inferior del labio
-            };
-
-            for ix in 0..128 {
-                let u = ix as f32 / 127.0; // 0.0 = comisura izq (61), 0.5 = centro (0/17), 1.0 = comisura der (291)
-                let u_sin = (u * std::f32::consts::PI).sin();
-                // Desvanecimiento suave en las comisuras laterales para nunca manchar la piel
-                let u_env = u_sin.powf(0.50);
-
-                let (out_feather, liner_t) = if is_upper {
-                    let t_out = (v_local / 0.28).clamp(0.0, 1.0);
-                    let l_t = (1.0 - ((v_local - 0.16).abs() / 0.14)).clamp(0.0, 1.0);
-                    (t_out * t_out * (3.0 - 2.0 * t_out), l_t * l_t)
-                } else {
-                    let t_out = ((1.0 - v_local) / 0.30).clamp(0.0, 1.0);
-                    let l_t = (1.0 - ((v_local - 0.82).abs() / 0.14)).clamp(0.0, 1.0);
-                    (t_out * t_out * (3.0 - 2.0 * t_out), l_t * l_t)
-                };
-
-                let v_bell = (v_local * std::f32::consts::PI).sin();
-                let outer_alpha = (u_env * out_feather * (0.76 + 0.24 * v_bell)).clamp(0.0, 1.0);
-
-                // Pliegues verticales naturales del labio (sulci) + volumen 3D tipo cojín
-                let crease1 = (u * 38.0 * std::f32::consts::PI).sin();
-                let crease2 = (u * 74.0 * std::f32::consts::PI + 0.6).cos();
-                let sulci = 0.93 + (0.045 * crease1 + 0.020 * crease2) * v_bell;
-                let cushion_3d = (0.84 + 0.22 * v_bell * u_sin) * sulci;
-
-                // Brillo especular satinado (cojín central del labio inferior + toque en arco de Cupido)
-                let gloss_spec = if !is_upper {
-                    let gx = (1.0 - ((u - 0.50).abs() / 0.26)).clamp(0.0, 1.0);
-                    let gy = (1.0 - ((v_local - 0.40).abs() / 0.20)).clamp(0.0, 1.0);
-                    let bead = (0.65 + 0.35 * crease1).max(0.0);
-                    (gx * gx * gy * gy * bead).clamp(0.0, 1.0)
-                } else {
-                    let gx = (1.0 - ((u - 0.50).abs() / 0.18)).clamp(0.0, 1.0);
-                    let gy = (1.0 - ((v_local - 0.35).abs() / 0.18)).clamp(0.0, 1.0);
-                    (gx * gx * gy * gy * 0.45).clamp(0.0, 1.0)
-                };
-
-                let liner_shade = (liner_t * u_env * 0.85).clamp(0.0, 1.0);
-
-                lip_sprite[iy * 128 + ix] = [outer_alpha, cushion_3d, gloss_spec, liner_shade];
-            }
-        }
+        // Generación procedimental de Sprites de soporte
+        let contact_lens_sprite = generate_default_contact_lens_sprite();
+        let lip_sprite = generate_default_lip_sprite();
 
         Self {
             width,
@@ -1027,6 +160,13 @@ impl VideoProcessor {
             gaussian_lut,
             srgb_lut,
             lens_sprites_rgba,
+            eyeshadow_sprites_rgba,
+            eyebrow_sprites_rgba,
+            face_mesh_renderer,
+            master_makeup_rgba,
+            devil_horns_mesh,
+            mesh3d_renderer,
+            smoothed_head_pose: None,
             contact_lens_sprite,
             smoothed_iris_discs: None,
             lip_sprite,
@@ -1050,6 +190,8 @@ impl VideoProcessor {
         self.width = width;
         self.height = height;
         self.output_buffer.resize(width * height * 4, 0);
+        self.face_mesh_renderer.resize(width, height);
+        self.mesh3d_renderer.resize(width, height);
     }
 
     pub fn process_frame(
@@ -1067,104 +209,13 @@ impl VideoProcessor {
 
         // 1. Análisis fotométrico de luminancia y crominancia ambiental & Prioridad Retrato Facial
         let active_face = faces.iter().find(|f| f.detected && f.bounding_box.width > 20.0);
-        let (face_min_x, face_max_x, face_min_y, face_max_y) = if let Some(face) = active_face {
-            let bb = &face.bounding_box;
-            let margin_x = bb.width * 0.15;
-            let margin_y = bb.height * 0.15;
-            (bb.x + margin_x, bb.x + bb.width - margin_x, bb.y + margin_y, bb.y + bb.height - margin_y)
-        } else {
-            (-1.0, -1.0, -1.0, -1.0)
-        };
-
-        let sample_step = 16;
-        let mut sample_count = 0;
-        let mut total_luma = 0.0_f32;
-        let mut total_r = 0.0_f32;
-        let mut total_g = 0.0_f32;
-        let mut total_b = 0.0_f32;
-        let mut min_luma = 1.0_f32;
-        let mut max_luma = 0.0_f32;
-        let mut total_chroma = 0.0_f32;
-
-        let mut face_sample_count = 0;
-        let mut face_luma_sum = 0.0_f32;
-
-        for y in (0..height).step_by(sample_step) {
-            let row_offset = y * width * 4;
-            let fy = y as f32;
-            for x in (0..width).step_by(sample_step) {
-                let idx = row_offset + x * 4;
-                if idx + 2 < input_rgba.len() {
-                    let r = input_rgba[idx] as f32 / 255.0;
-                    let g = input_rgba[idx + 1] as f32 / 255.0;
-                    let b = input_rgba[idx + 2] as f32 / 255.0;
-                    let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-                    total_luma += luma;
-                    total_r += r;
-                    total_g += g;
-                    total_b += b;
-                    if luma < min_luma { min_luma = luma; }
-                    if luma > max_luma { max_luma = luma; }
-                    let chroma = ((r - g).abs() + (g - b).abs() + (b - r).abs()) * 0.3333;
-                    total_chroma += chroma;
-                    sample_count += 1;
-
-                    let fx = x as f32;
-                    if fx >= face_min_x && fx <= face_max_x && fy >= face_min_y && fy <= face_max_y {
-                        face_luma_sum += luma;
-                        face_sample_count += 1;
-                    }
-                }
-            }
-        }
-
-        let avg_luma = if sample_count > 0 { total_luma / sample_count as f32 } else { 0.42 };
-        let avg_r = if sample_count > 0 { total_r / sample_count as f32 } else { 0.42 };
-        let avg_g = if sample_count > 0 { total_g / sample_count as f32 } else { 0.42 };
-        let avg_b = if sample_count > 0 { total_b / sample_count as f32 } else { 0.42 };
-        let _avg_chroma = if sample_count > 0 { total_chroma / sample_count as f32 } else { 0.10 };
-        let _dynamic_range = max_luma - min_luma;
-
-        self.luma_accumulator = self.luma_accumulator * 0.90 + avg_luma * 0.10;
+        let photo_sample = analyze_frame_luma(input_rgba, width, height, faces);
+        self.luma_accumulator = self.luma_accumulator * 0.90 + photo_sample.avg_luma * 0.10;
         let current_luma = self.luma_accumulator;
 
         // 2. Cálculo de Auto-Ajustes e IA de Calibración Base (SnapJM Zone VI Portrait Metering)
-        let (calculated_exp, target_wb_r, target_wb_g, target_wb_b, effective_measured_luma) = if let Some(fl) = face_lighting.filter(|l| l.has_face) {
-            let face_luma = fl.face_luma.clamp(0.05, 0.95);
-
-            let target_skin_luma = 0.53_f32;
-            let measured = (face_luma * 0.85 + current_luma * 0.15).max(0.08);
-            let exp = (target_skin_luma / measured).log2().clamp(-0.40, 1.10);
-
-            // Calibración colorimétrica natural Gray-World (elimina dominantes de iluminación sin inyectar azul artificial)
-            let avg_scene = (fl.scene_r + fl.scene_g + fl.scene_b) / 3.0;
-            let wb_r = (avg_scene / fl.scene_r.max(0.05)).clamp(0.92, 1.08);
-            let wb_g = (avg_scene / fl.scene_g.max(0.05)).clamp(0.95, 1.05);
-            let wb_b = (avg_scene / fl.scene_b.max(0.05)).clamp(0.92, 1.08);
-
-            (exp, wb_r, wb_g, wb_b, face_luma)
-        } else if face_sample_count > 4 {
-            let face_luma = face_luma_sum / face_sample_count as f32;
-            let target_skin_luma = 0.53_f32;
-            let measured = (face_luma * 0.85 + current_luma * 0.15).max(0.08);
-            let exp = (target_skin_luma / measured).log2().clamp(-0.40, 1.10);
-
-            let avg_scene = (avg_r + avg_g + avg_b) / 3.0;
-            let wb_r = (avg_scene / avg_r.max(0.05)).clamp(0.92, 1.08);
-            let wb_g = (avg_scene / avg_g.max(0.05)).clamp(0.95, 1.05);
-            let wb_b = (avg_scene / avg_b.max(0.05)).clamp(0.92, 1.08);
-
-            (exp, wb_r, wb_g, wb_b, face_luma)
-        } else {
-            let target_luma = 0.48_f32;
-            let measured = current_luma.max(0.08);
-            let exp = (target_luma / measured).log2().clamp(-0.35, 0.80);
-            let avg_scene = (avg_r + avg_g + avg_b) / 3.0;
-            let wb_r = (avg_scene / avg_r.max(0.05)).clamp(0.92, 1.08);
-            let wb_g = (avg_scene / avg_g.max(0.05)).clamp(0.95, 1.05);
-            let wb_b = (avg_scene / avg_b.max(0.05)).clamp(0.92, 1.08);
-            (exp, wb_r, wb_g, wb_b, current_luma)
-        };
+        let (calculated_exp, target_wb_r, target_wb_g, target_wb_b, effective_measured_luma) =
+            compute_target_lighting(&photo_sample, current_luma, face_lighting);
 
         // Calibración visual neutra y cinematográfica estilo smartphone de gama alta
         let calculated_contrast: f32 = 1.00_f32;
@@ -1305,11 +356,47 @@ impl VideoProcessor {
         let foundation_tone = if beauty_enabled { config.foundation_tone.as_str() } else { "none" };
         let foundation_intensity = if beauty_enabled { config.foundation_intensity.clamp(0.0, 1.0) } else { 0.0 };
         let contour = if beauty_enabled { config.contour.clamp(0.0, 1.0) } else { 0.0 };
-        let _eyeshadow = if beauty_enabled { config.eyeshadow.clamp(0.0, 1.0) } else { 0.0 };
+        let eyeshadow = if beauty_enabled { config.eyeshadow.clamp(0.0, 1.0) } else { 0.0 };
+        let eyeshadow_color = if beauty_enabled { config.eyeshadow_color.as_str() } else { "none" };
+        let eyeshadow_style = if beauty_enabled { config.eyeshadow_style.as_str() } else { "natural_nude" };
+        let eyeshadow_target_rgb = get_eyeshadow_color_rgb(eyeshadow_color);
+        let selected_eyeshadow_style_idx = get_eyeshadow_style_index(eyeshadow_style);
+        let selected_eyeshadow_rgba = if eyeshadow > 0.001 && eyeshadow_target_rgb.is_some() {
+            self.eyeshadow_sprites_rgba.get(selected_eyeshadow_style_idx)
+        } else {
+            None
+        };
+
+        let eyebrows = if beauty_enabled { config.eyebrows.clamp(0.0, 1.0) } else { 0.0 };
+        let eyebrow_color = if beauty_enabled { config.eyebrow_color.as_str() } else { "dark_brown" };
+        let _eyebrow_style = if beauty_enabled { config.eyebrow_style.as_str() } else { "natural_fill" };
+        let eyebrow_target_rgb = get_eyebrow_color_rgb(eyebrow_color);
+
+        let beard_enhancement = if beauty_enabled { config.beard_enhancement.clamp(0.0, 1.0) } else { 0.0 };
+        let beard_color = if beauty_enabled { config.beard_color.as_str() } else { "natural" };
+        let beard_target_rgb = get_beard_color_rgb(beard_color);
 
         let face_slim = if beauty_enabled { config.face_slim.clamp(0.0, 1.0) } else { 0.0 };
         let eye_enlarge = if beauty_enabled { config.eye_enlarge.clamp(0.0, 1.0) } else { 0.0 };
         let eye_round = if beauty_enabled { config.eye_round.clamp(0.0, 1.0) } else { 0.0 };
+        let eye_shape_str = if beauty_enabled { config.eye_shape.as_str() } else { "auto" };
+        let detected_shape = if let Some(face) = active_face {
+            if face.landmarks.len() >= 468 {
+                detect_eye_shape(&face.landmarks)
+            } else {
+                "almond"
+            }
+        } else {
+            "almond"
+        };
+        let effective_eye_shape = if eye_shape_str == "auto" {
+            detected_shape
+        } else {
+            eye_shape_str
+        };
+        let eye_shape_id = eye_shape_to_id(effective_eye_shape);
+        let has_forced_eye_shape = beauty_enabled && eye_shape_str != "auto" && eye_shape_str != "almond";
+
         let eye_brighten = if beauty_enabled { config.eye_brighten.clamp(0.0, 1.0) } else { 0.0 };
         let eye_catchlight = if beauty_enabled { config.eye_catchlight.clamp(0.0, 1.0) } else { 0.0 };
         let eyelashes = if beauty_enabled { config.eyelashes.clamp(0.0, 1.0) } else { 0.0 };
@@ -1322,6 +409,7 @@ impl VideoProcessor {
         let morph_active = face_slim > 0.001
             || eye_enlarge > 0.001
             || eye_round > 0.001
+            || has_forced_eye_shape
             || brow_lift > 0.001
             || nose_slim.abs() > 0.001
             || lip_plump > 0.001;
@@ -1352,6 +440,8 @@ impl VideoProcessor {
                         h_bot: el_hbot,
                         limit_y_top: (el_hbrow * 0.82).min(el_htop * 2.5).max(el_htop * 1.3),
                         limit_y_bot: (el_hbot * 2.2).max(el_hbot * 1.4),
+                        is_viewer_left: true,
+                        shape_id: eye_shape_id,
                     };
 
                     // Parámetros anatómicos milimétricos del ojo derecho (viewer's right)
@@ -1367,6 +457,8 @@ impl VideoProcessor {
                         h_bot: er_hbot,
                         limit_y_top: (er_hbrow * 0.82).min(er_htop * 2.5).max(er_htop * 1.3),
                         limit_y_bot: (er_hbot * 2.2).max(er_hbot * 1.4),
+                        is_viewer_left: false,
+                        shape_id: eye_shape_id,
                     };
 
                     let nose_tip = lm[1];
@@ -1497,7 +589,8 @@ impl VideoProcessor {
                 || eye_catchlight > 0.001
                 || eye_brighten > 0.001
                 || iris_lighting > 0.001
-                || selected_lens_idx.is_some())
+                || selected_lens_idx.is_some()
+                || (eyeshadow > 0.001 && selected_eyeshadow_rgba.is_some()))
         {
             if let Some(face) = active_face {
                 if face.landmarks.len() >= 468 {
@@ -1538,9 +631,18 @@ impl VideoProcessor {
                     let eye_w_l = (dx_l * dx_l + dy_l * dy_l).sqrt().max(10.0);
                     let eye_h_l = (el_bot.y - el_top.y).abs().max(4.0);
 
+                    let (wing_ext, wing_lift) = match eye_shape_id {
+                        1 => (0.24, 0.32),   // Foxy: Ala temporal alargada y elevada a ~40 grados
+                        2 => (0.16, 0.12),   // Asiático: Elongación sutil a lo largo de la línea palpebral
+                        3 => (0.08, 0.08),   // Doe / Muñeca: Redondeo suave sin ala excesiva
+                        4 => (0.18, 0.22),   // Encapotado: Batwing liner elevado por encima del pliegue
+                        _ => (0.14, 0.18),   // Almendrado / Clásico
+                    };
+
+                    let wing_lift_px_l = eye_w_l * (0.24 * wing_lift);
                     let wing_l = Point2f {
-                        x: el_outer.x + (dx_l / eye_w_l) * (eye_w_l * 0.14),
-                        y: el_outer.y - eye_h_l * 0.18,
+                        x: el_outer.x + (dx_l / eye_w_l) * (eye_w_l * wing_ext),
+                        y: el_outer.y - wing_lift_px_l,
                     };
 
                     let segs_l = [
@@ -1602,9 +704,15 @@ impl VideoProcessor {
                     let eye_w_r = (dx_r * dx_r + dy_r * dy_r).sqrt().max(10.0);
                     let eye_h_r = (er_bot.y - er_top.y).abs().max(4.0);
 
+                    // Relación biométrica inter-ocular (Charlotte Tilbury Close-Set vs Wide-Set)
+                    let d_inter_canthal = (lm[362].x - lm[133].x).abs();
+                    let avg_eye_w = ((eye_w_l + eye_w_r) * 0.5).max(1.0);
+                    let inter_canthal_ratio = d_inter_canthal / avg_eye_w;
+
+                    let wing_lift_px_r = eye_w_r * (0.24 * wing_lift);
                     let wing_r = Point2f {
-                        x: er_outer.x + (dx_r / eye_w_r) * (eye_w_r * 0.14),
-                        y: er_outer.y - eye_h_r * 0.18,
+                        x: er_outer.x + (dx_r / eye_w_r) * (eye_w_r * wing_ext),
+                        y: er_outer.y - wing_lift_px_r,
                     };
 
                     let segs_r = [
@@ -1670,15 +778,60 @@ impl VideoProcessor {
                     let left_x_l = upper_pts_l[0].0.min(lower_pts_l[0].0);
                     let right_x_l = upper_pts_l[8].0.max(lower_pts_l[8].0);
 
+                    let r0_l = [
+                        (lm[33].x, lm[33].y),
+                        (lm[246].x, lm[246].y),
+                        (lm[161].x, lm[161].y),
+                        (lm[160].x, lm[160].y),
+                        (lm[159].x, lm[159].y),
+                        (lm[158].x, lm[158].y),
+                        (lm[157].x, lm[157].y),
+                        (lm[173].x, lm[173].y),
+                        (lm[133].x, lm[133].y),
+                    ];
+                    let r1_l = [
+                        (lm[7].x, lm[7].y),
+                        (lm[247].x, lm[247].y),
+                        (lm[30].x, lm[30].y),
+                        (lm[29].x, lm[29].y),
+                        (lm[27].x, lm[27].y),
+                        (lm[28].x, lm[28].y),
+                        (lm[56].x, lm[56].y),
+                        (lm[190].x, lm[190].y),
+                        (lm[243].x, lm[243].y),
+                    ];
+                    let r2_l = [
+                        (lm[130].x, lm[130].y),
+                        (lm[25].x, lm[25].y),
+                        (lm[110].x, lm[110].y),
+                        (lm[24].x, lm[24].y),
+                        (lm[23].x, lm[23].y),
+                        (lm[22].x, lm[22].y),
+                        (lm[26].x, lm[26].y),
+                        (lm[112].x, lm[112].y),
+                        (lm[244].x, lm[244].y),
+                    ];
+                    let (mesh_triangles_l, num_triangles_l) = build_eye_mesh_triangles(&r0_l, &r1_l, &r2_l, (wing_l.x, wing_l.y));
+
+                    let min_y_l = if eyeshadow > 0.001 {
+                        (lm[23].y.min(lm[105].y) - 6.0).max(0.0)
+                    } else {
+                        (lm[159].y.min(pupil_l_y - iris_rad_l) - eye_h_l * 0.50 - 7.0).max(0.0)
+                    };
+
                     let eye_l_params = EyeAccentParams {
                         min_x: (wing_l.x.min(left_x_l) - 6.0).max(0.0),
                         max_x: (right_x_l + 6.0).min(width as f32),
-                        min_y: (lm[159].y.min(pupil_l_y - iris_rad_l) - eye_h_l * 0.50 - 7.0).max(0.0),
-                        max_y: (lm[145].y.max(pupil_l_y + iris_rad_l) + 9.0).min(height as f32),
+                        min_y: min_y_l,
+                        max_y: (lm[145].y.max(pupil_l_y + iris_rad_l) + eye_w_l * 0.40 + 12.0).min(height as f32),
                         left_x: left_x_l,
                         right_x: right_x_l,
                         upper_pts: upper_pts_l,
                         lower_pts: lower_pts_l,
+                        es_upper: r0_l,
+                        es_crease: r1_l,
+                        mesh_triangles: mesh_triangles_l,
+                        num_triangles: num_triangles_l,
                         pupil_x: pupil_l_x,
                         pupil_y: pupil_l_y,
                         iris_rad: iris_rad_l,
@@ -1699,7 +852,10 @@ impl VideoProcessor {
                         inner_x: lm[133].x,
                         outer_x: wing_l.x.min(lm[33].x),
                         inv_eye_width: 1.0 / eye_w_l,
+                        eye_w: eye_w_l,
                         eye_h: eye_h_l,
+                        shape_id: eye_shape_id,
+                        inter_canthal_ratio,
                     };
 
                     let (pupil_r_x, pupil_r_y, iris_rad_r, iris_lum_r, sclera_lum_r) = disc_r;
@@ -1710,15 +866,60 @@ impl VideoProcessor {
                     let left_x_r = upper_pts_r[0].0.min(lower_pts_r[0].0);
                     let right_x_r = upper_pts_r[8].0.max(lower_pts_r[8].0);
 
+                    let r0_r = [
+                        (lm[263].x, lm[263].y),
+                        (lm[466].x, lm[466].y),
+                        (lm[388].x, lm[388].y),
+                        (lm[387].x, lm[387].y),
+                        (lm[386].x, lm[386].y),
+                        (lm[385].x, lm[385].y),
+                        (lm[384].x, lm[384].y),
+                        (lm[398].x, lm[398].y),
+                        (lm[362].x, lm[362].y),
+                    ];
+                    let r1_r = [
+                        (lm[359].x, lm[359].y),
+                        (lm[467].x, lm[467].y),
+                        (lm[260].x, lm[260].y),
+                        (lm[259].x, lm[259].y),
+                        (lm[257].x, lm[257].y),
+                        (lm[258].x, lm[258].y),
+                        (lm[286].x, lm[286].y),
+                        (lm[414].x, lm[414].y),
+                        (lm[463].x, lm[463].y),
+                    ];
+                    let r2_r = [
+                        (lm[255].x, lm[255].y),
+                        (lm[339].x, lm[339].y),
+                        (lm[254].x, lm[254].y),
+                        (lm[253].x, lm[253].y),
+                        (lm[252].x, lm[252].y),
+                        (lm[256].x, lm[256].y),
+                        (lm[341].x, lm[341].y),
+                        (lm[464].x, lm[464].y),
+                        (lm[465].x, lm[465].y),
+                    ];
+                    let (mesh_triangles_r, num_triangles_r) = build_eye_mesh_triangles(&r0_r, &r1_r, &r2_r, (wing_r.x, wing_r.y));
+
+                    let min_y_r = if eyeshadow > 0.001 {
+                        (lm[252].y.min(lm[334].y) - 6.0).max(0.0)
+                    } else {
+                        (lm[386].y.min(pupil_r_y - iris_rad_r) - eye_h_r * 0.50 - 7.0).max(0.0)
+                    };
+
                     let eye_r_params = EyeAccentParams {
                         min_x: (left_x_r - 6.0).max(0.0),
                         max_x: (wing_r.x.max(right_x_r) + 6.0).min(width as f32),
-                        min_y: (lm[386].y.min(pupil_r_y - iris_rad_r) - eye_h_r * 0.50 - 7.0).max(0.0),
-                        max_y: (lm[374].y.max(pupil_r_y + iris_rad_r) + 9.0).min(height as f32),
+                        min_y: min_y_r,
+                        max_y: (lm[374].y.max(pupil_r_y + iris_rad_r) + eye_w_r * 0.40 + 12.0).min(height as f32),
                         left_x: left_x_r,
                         right_x: right_x_r,
                         upper_pts: upper_pts_r,
                         lower_pts: lower_pts_r,
+                        es_upper: r0_r,
+                        es_crease: r1_r,
+                        mesh_triangles: mesh_triangles_r,
+                        num_triangles: num_triangles_r,
                         pupil_x: pupil_r_x,
                         pupil_y: pupil_r_y,
                         iris_rad: iris_rad_r,
@@ -1739,11 +940,14 @@ impl VideoProcessor {
                         inner_x: lm[362].x,
                         outer_x: wing_r.x.max(lm[263].x),
                         inv_eye_width: 1.0 / eye_w_r,
+                        eye_w: eye_w_r,
                         eye_h: eye_h_r,
+                        shape_id: eye_shape_id,
+                        inter_canthal_ratio,
                     };
 
-                    let sampled_face_luma = if face_sample_count > 0 {
-                        face_luma_sum / face_sample_count as f32
+                    let sampled_face_luma = if photo_sample.face_sample_count > 0 {
+                        photo_sample.face_luma_sum / photo_sample.face_sample_count as f32
                     } else {
                         0.45
                     };
@@ -1766,6 +970,8 @@ impl VideoProcessor {
             self.smoothed_iris_discs = None;
             None
         };
+
+
 
         // Pre-cálculo por frame de las 4 curvas exactas 1080p para el Sprite Deformable de Labios
         // con estabilización temporal adaptativa 1€ (elimina micro-vibración en reposo sin lag al hablar)
@@ -1886,6 +1092,72 @@ impl VideoProcessor {
             self.smoothed_lip_curves = None;
             None
         };
+
+        // Estimación de Orientación 3D de Cabeza (Head Pose 6DoF) para Props y Efectos 3D
+        let head_pose_3d = if config.active_effect == "devil_horns" {
+            if let Some(face) = active_face {
+                let pose = estimate_head_pose_3d(
+                    &face.landmarks,
+                    &mut self.smoothed_head_pose,
+                );
+                static mut LAST_POSE_LOG: u32 = 0;
+                unsafe {
+                    LAST_POSE_LOG += 1;
+                    if LAST_POSE_LOG % 60 == 1 {
+                        if let Some(ref p) = pose {
+                            crate::log_info!("Effects", "HeadPose3D OK: yaw={:.2}, center=({:.1}, {:.1}), scale={:.2}",
+                                p.yaw_ratio, p.center_x, p.center_y, p.scale);
+                        } else {
+                            crate::log_warn!("Effects", "estimate_head_pose_3d es NONE! landmarks={}", face.landmarks.len());
+                        }
+                    }
+                }
+                pose
+            } else {
+                static mut LAST_NO_FACE: u32 = 0;
+                unsafe {
+                    LAST_NO_FACE += 1;
+                    if LAST_NO_FACE % 60 == 1 {
+                        crate::log_warn!("Effects", "devil_horns activo pero no hay active_face! faces.len()={}", faces.len());
+                    }
+                }
+                self.smoothed_head_pose = None;
+                None
+            }
+        } else {
+            self.smoothed_head_pose = None;
+            None
+        };
+
+        // Estimación de Parámetros Dinámicos para Boca y Ojos Cómicos (Face Inset)
+        let face_inset_params = if config.active_effect == "big_mouth_eyes" {
+            if let Some(face) = active_face {
+                compute_face_inset_params(
+                    &face.landmarks,
+                    config.mouth_scale,
+                    config.eyes_scale,
+                    config.eyes_distance,
+                    config.effect_intensity,
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Renderizado 3D de la Malla Canónica Facial (898 triángulos UV estilo Bigo Live)
+        let face_mesh_bounds = if beauty_enabled {
+            if let Some(face) = active_face {
+                self.face_mesh_renderer.rasterize_face(&face.landmarks)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let face_uv_map = &self.face_mesh_renderer.face_uv_map;
+        let master_makeup = &self.master_makeup_rgba;
 
         let lut = &self.gaussian_lut;
         let lut_srgb = &self.srgb_lut;
@@ -2115,8 +1387,8 @@ impl VideoProcessor {
                             let mut sx = px;
                             let mut sy = py;
 
-                            // 1. Ojos (Eye Enlarge & Round: apertura palpebral y magnificación anatómica estilo Bigo Live)
-                            if eye_enlarge > 0.001 || eye_round > 0.001 {
+                            // 1. Ojos (Agrandamiento isotrópico y Forma de Ojos anatómica)
+                            if eye_enlarge > 0.001 || eye_round > 0.001 || has_forced_eye_shape {
                                 warp_eye(px, py, &eye_l_params, eye_enlarge, eye_round, &mut sx, &mut sy);
                                 warp_eye(px, py, &eye_r_params, eye_enlarge, eye_round, &mut sx, &mut sy);
                                 eye_sx = sx;
@@ -2334,7 +1606,18 @@ impl VideoProcessor {
                     if beauty_active && skin_val > 0.02 {
                         // Protección anatómica: ojos y labios quedan completamente protegidos
                         let feat_factor = (1.0 - eyes_val * 1.5).clamp(0.0, 1.0) * (1.0 - lips_val * 1.5).clamp(0.0, 1.0);
-                        let smooth_blend = skin_intensity * skin_val * feat_factor;
+                        let mut smooth_blend = skin_intensity * skin_val * feat_factor;
+
+                        // Si el usuario activa el realce de barba, preservar la textura y nitidez de los vellos
+                        if beard_enhancement > 0.001 {
+                            let packed = face_uv_map.get(y * width + x).copied().unwrap_or(0);
+                            if let Some((u, v, region)) = unpack_face_uv(packed) {
+                                let beard_w = calc_beard_uv_weight(u, v, region);
+                                if beard_w > 0.05 {
+                                    smooth_blend *= (1.0 - beard_w * 0.75 * beard_enhancement).clamp(0.0, 1.0);
+                                }
+                            }
+                        }
 
                         if smooth_blend > 0.005 {
                             let lum_center = 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -2420,6 +1703,125 @@ impl VideoProcessor {
                     if let Some(([ref eye_l, ref eye_r], backlight_factor)) = eye_accents {
                         for eye in [eye_l, eye_r] {
                             if eye_sx >= eye.min_x && eye_sx <= eye.max_x && eye_sy >= eye.min_y && eye_sy <= eye.max_y {
+                                // 0. Sombra de Ojos 3D Mesh UV Mapping (Malla Facial Canónica 3D Estilo Bigo/TikTok)
+                                // Rasterización baricéntrica directa sobre los triángulos reales del párpado móvil,
+                                // cuenca orbital y ala exterior para cobertura continua sin huecos ni saltos.
+                                if eyeshadow > 0.001 {
+                                    let mut sampled_uv = None;
+                                    for i in 0..eye.num_triangles {
+                                        if let Some(uv) = eye.mesh_triangles[i].sample_uv(eye_sx, eye_sy) {
+                                            sampled_uv = Some(uv);
+                                            break;
+                                        }
+                                    }
+
+                                    if let Some((u_norm, v_norm)) = sampled_uv {
+                                        let fx_s = u_norm.clamp(0.0, 1.0) * 255.0;
+                                        let fy_s = (1.0 - v_norm.clamp(0.0, 1.0)) * 255.0;
+                                        if let Some(es_sprite) = selected_eyeshadow_rgba {
+                                            let [sp_r, sp_g, sp_b, sp_a] = sample_sprite_bilinear_256(es_sprite, fx_s, fy_s);
+                                            let eff_alpha = (sp_a * eyeshadow).clamp(0.0, 0.95);
+                                            if eff_alpha > 0.001 {
+                                                if let Some((tint_r, tint_g, tint_b)) = eyeshadow_target_rgb {
+                                                    let (mut target_r, mut target_g, mut target_b) = if eyeshadow_color == "smoky_black" {
+                                                        let kohl = 0.06 + 0.10 * (1.0 - sp_r);
+                                                        (kohl, kohl, kohl * 1.05)
+                                                    } else if eyeshadow_color == "black_tea" {
+                                                        (tint_r * (0.55 + 0.45 * sp_r), tint_g * (0.55 + 0.45 * sp_g), tint_b * (0.55 + 0.45 * sp_b))
+                                                    } else {
+                                                        (tint_r * (0.45 + 0.55 * sp_r), tint_g * (0.45 + 0.55 * sp_g), tint_b * (0.45 + 0.55 * sp_b))
+                                                    };
+
+                                                    // Glitter Pop: Micro-destellos especulares en párpado
+                                                    if selected_eyeshadow_style_idx == 6 {
+                                                        let noise = ((eye_sx * 13.73 + eye_sy * 37.19).sin() * 43758.5453).fract();
+                                                        if noise > 0.65 {
+                                                            let glint = ((noise - 0.65) / 0.35).powi(2) * 0.85;
+                                                            target_r = (target_r + glint).min(1.0);
+                                                            target_g = (target_g + glint * 0.90).min(1.0);
+                                                            target_b = (target_b + glint * 0.75).min(1.0);
+                                                        }
+                                                    }
+
+                                                    r = r * (1.0 - eff_alpha) + target_r * eff_alpha;
+                                                    g = g * (1.0 - eff_alpha) + target_g * eff_alpha;
+                                                    b = b * (1.0 - eff_alpha) + target_b * eff_alpha;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 0.5 Sombra de Ojos en Párpado Inferior (Under-Eye Smudge 360° / Grunge / Runway)
+                                // Delimitado estrictamente al párpado inferior: NUNCA desborda al puente nasal ni lagrimal
+                                if eyeshadow > 0.001 {
+                                    let (in_x_bound, u_outer) = if eye.is_viewer_left {
+                                        let safe_inner = eye.inner_x - eye.eye_w * 0.14;
+                                        let in_bounds = eye_sx >= (eye.left_x - 4.0) && eye_sx <= safe_inner;
+                                        let u_out = ((safe_inner - eye_sx) / (safe_inner - eye.left_x).max(1.0)).clamp(0.0, 1.0);
+                                        (in_bounds, u_out)
+                                    } else {
+                                        let safe_inner = eye.inner_x + eye.eye_w * 0.14;
+                                        let in_bounds = eye_sx >= safe_inner && eye_sx <= (eye.right_x + 4.0);
+                                        let u_out = ((eye_sx - safe_inner) / (eye.right_x - safe_inner).max(1.0)).clamp(0.0, 1.0);
+                                        (in_bounds, u_out)
+                                    };
+
+                                    if in_x_bound {
+                                        let y_lower_lid = sample_lid_y(&eye.lower_pts, eye_sx.clamp(eye.left_x, eye.right_x));
+                                        if eye_sy >= y_lower_lid - 0.5 {
+                                            let (reach_factor, density, min_u_cutoff) = match selected_eyeshadow_style_idx {
+                                                4 => (0.16, 1.10, 0.05), // grunge_kohl (Foto 1: 360° oscuro difuminado)
+                                                5 => (0.09, 0.90, 0.40), // foxy_glam (Fotos 2 y 4: tercio exterior conectado al ala)
+                                                2 => (0.07, 0.80, 0.50), // cat_wing
+                                                _ => (0.05, 0.60, 0.60), // estilos estándar
+                                            };
+
+                                            if u_outer >= min_u_cutoff {
+                                                let lower_reach = (eye.eye_w * reach_factor).clamp(3.0, 16.0);
+                                                let dy_low = eye_sy - y_lower_lid;
+                                                if dy_low <= lower_reach {
+                                                    let v_low = (dy_low / lower_reach).clamp(0.0, 1.0);
+                                                    let falloff = (-v_low / 0.42).exp();
+                                                    let u_weight = u_outer.powf(1.1);
+                                                    let eff_alpha_low = (falloff * u_weight * density * eyeshadow * 0.80).clamp(0.0, 0.88);
+
+                                                    if eff_alpha_low > 0.001 {
+                                                        if let Some((tint_r, tint_g, tint_b)) = eyeshadow_target_rgb {
+                                                            let (target_r, target_g, target_b) = if eyeshadow_color == "smoky_black" {
+                                                                (0.09, 0.09, 0.10)
+                                                            } else {
+                                                                (tint_r * 0.70, tint_g * 0.70, tint_b * 0.70)
+                                                            };
+
+                                                            r = r * (1.0 - eff_alpha_low) + target_r * eff_alpha_low;
+                                                            g = g * (1.0 - eff_alpha_low) + target_g * eff_alpha_low;
+                                                            b = b * (1.0 - eff_alpha_low) + target_b * eff_alpha_low;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 0.6 Piquito felino en lagrimal interno (Inner Corner Fox Flick para foxy_glam y cat_wing)
+                                if (selected_eyeshadow_style_idx == 5 || selected_eyeshadow_style_idx == 2) && eyelashes > 0.08 {
+                                    let d_inner_x = if eye.is_viewer_left { eye_sx - eye.inner_x } else { eye.inner_x - eye_sx };
+                                    let flick_len = eye.eye_w * 0.10;
+                                    if d_inner_x >= 0.0 && d_inner_x <= flick_len {
+                                        let y_inner = eye.upper_pts[if eye.is_viewer_left { 8 } else { 0 }].1;
+                                        let dy_inner = (eye_sy - y_inner).abs();
+                                        let flick_width = (1.0 - (d_inner_x / flick_len)) * 2.0;
+                                        if dy_inner <= flick_width {
+                                            let flick_alpha = ((1.0 - dy_inner / flick_width.max(0.4)) * eyelashes * 0.92).clamp(0.0, 0.95);
+                                            r = r * (1.0 - flick_alpha) + 0.08 * flick_alpha;
+                                            g = g * (1.0 - flick_alpha) + 0.08 * flick_alpha;
+                                            b = b * (1.0 - flick_alpha) + 0.09 * flick_alpha;
+                                        }
+                                    }
+                                }
+
                                 // 1. Interior de la fisura palpebral analítica 1080p (Esclera, Sprite de Pupilente y Catchlight)
                                 if eye_sx >= eye.left_x && eye_sx <= eye.right_x {
                                     let y_top_raw = sample_lid_y(&eye.upper_pts, eye_sx);
@@ -2616,9 +2018,15 @@ impl VideoProcessor {
                                             if min_low_dist < tightline_reach {
                                                 let t_tl = (1.0 - min_low_dist / tightline_reach).clamp(0.0, 1.0);
                                                 let alpha_tl = (t_tl * t_tl * lower_env * eyelashes * 0.44 * backlight_factor).min(0.55);
-                                                let shade_r = 0.07 * backlight_factor;
-                                                let shade_g = 0.05 * backlight_factor;
-                                                let shade_b = 0.05 * backlight_factor;
+                                                let (shade_r, shade_g, shade_b) = if let Some((er, eg, eb)) = eyeshadow_target_rgb {
+                                                    (
+                                                        (0.07 * (1.0 - eyeshadow * 0.4) + er * 0.22 * eyeshadow) * backlight_factor,
+                                                        (0.05 * (1.0 - eyeshadow * 0.4) + eg * 0.18 * eyeshadow) * backlight_factor,
+                                                        (0.05 * (1.0 - eyeshadow * 0.4) + eb * 0.18 * eyeshadow) * backlight_factor,
+                                                    )
+                                                } else {
+                                                    (0.07 * backlight_factor, 0.05 * backlight_factor, 0.05 * backlight_factor)
+                                                };
                                                 r = r * (1.0 - alpha_tl) + shade_r * alpha_tl;
                                                 g = g * (1.0 - alpha_tl) + shade_g * alpha_tl;
                                                 b = b * (1.0 - alpha_tl) + shade_b * alpha_tl;
@@ -2644,6 +2052,98 @@ impl VideoProcessor {
                                                         b = b * (1.0 - lash_low_alpha) + (dark_low * 0.95) * lash_low_alpha;
                                                     }
                                                 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // =========================================================================
+                    // PASO 2.57: MÁSCARA CANÓNICA FACIAL 3D (898 TRIÁNGULOS UV ESTILO BIGO LIVE)
+                    // Renderizado anatómico integrado:
+                    // 1. RELLENO DE OJERAS (Región 4): Ilumina sombras oscuras de bolsas perioculares.
+                    // 2. CEJAS (V 0.67..0.76): Ancladas a los landmarks reales del hueso superciliar.
+                    // 3. MAQUILLAJE DE PIEL: Rubor en pómulos, luz en puente de nariz y labial.
+                    // =========================================================================
+                    if let Some((f_min_x, f_max_x, f_min_y, f_max_y)) = face_mesh_bounds {
+                        let px_i = eye_sx as usize;
+                        let py_i = eye_sy as usize;
+                        if px_i >= f_min_x && px_i <= f_max_x && py_i >= f_min_y && py_i <= f_max_y {
+                            let packed = face_uv_map.get(py_i * width + px_i).copied().unwrap_or(0);
+                            if let Some((u, v, region)) = unpack_face_uv(packed) {
+                                // 0. RESALTADO, TINTE Y VISAGISMO DE BARBA (Bigote, Mentón, Mandíbula y Patillas)
+                                if beard_enhancement > 0.001 {
+                                    let beard_w = calc_beard_uv_weight(u, v, region);
+                                    if beard_w > 0.001 {
+                                        apply_beard_shading(&mut r, &mut g, &mut b, beard_w, beard_enhancement, beard_target_rgb);
+                                    }
+                                }
+
+                                let [mk_r, mk_g, mk_b, mk_a] = sample_face_mask_bilinear_1024(master_makeup, u, v);
+                                if mk_a > 0.001 {
+                                    if region == 4 {
+                                        // 1. CORRECTOR NATURAL DE OJERAS (Lifting de Sombras Infraorbitales):
+                                        // En lugar de pintar corrector blanco opaco, elevamos suavemente la luminancia
+                                        // de las sombras oscuras del surco lagrimal hacia el tono uniforme de la mejilla.
+                                        let concealer_strength = (skin_intensity * 0.90).clamp(0.0, 1.0);
+                                        let eff_alpha = (mk_a * concealer_strength * 0.70).clamp(0.0, 0.80);
+                                        if eff_alpha > 0.001 {
+                                            let cur_lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                                            // Solo aclara sombras por debajo de medios tonos (evita quemar o crear parches)
+                                            let shadow_depth = (0.62 - cur_lum).max(0.0);
+                                            let lift = shadow_depth * 0.40 * eff_alpha;
+                                            r = (r + lift * 1.05).min(1.0);
+                                            g = (g + lift * 0.98).min(1.0);
+                                            b = (b + lift * 0.92).min(1.0);
+                                        }
+                                    } else {
+                                        // 2. CEJAS Y MAQUILLAJE INTEGRADO:
+                                        let is_eyebrow = v >= 0.67 && v <= 0.76 && ((u >= 0.20 && u <= 0.46) || (u >= 0.54 && u <= 0.80));
+                                        if is_eyebrow {
+                                            // Realce y Densificación Anatómica de Vellos Reales:
+                                            // Profundiza los folículos pilosos reales donde el usuario ya tiene cejas,
+                                            // adaptándose automáticamente a la forma anatómica real de cualquier persona.
+                                            if eyebrows > 0.001 {
+                                                let cur_lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                                                // Detección de vellos oscuros vs piel clara circundante
+                                                let hair_contrast = ((0.42 - cur_lum) / 0.35).clamp(0.0, 1.0);
+                                                let brow_strength = eyebrows.clamp(0.0, 1.0);
+                                                // Relleno: profundiza fuertemente el vello real (75%) y solo sombrea sutilmente la base (25%)
+                                                let fill_weight = (hair_contrast * 0.75 + 0.25) * mk_a * brow_strength;
+                                                let dark_factor = (fill_weight * 0.45).clamp(0.0, 0.65);
+
+                                                if dark_factor > 0.001 {
+                                                    if let Some((tint_r, tint_g, tint_b)) = eyebrow_target_rgb {
+                                                        let custom_r = tint_r * (0.20 + 0.80 * r);
+                                                        let custom_g = tint_g * (0.20 + 0.80 * g);
+                                                        let custom_b = tint_b * (0.20 + 0.80 * b);
+                                                        r = r * (1.0 - dark_factor) + custom_r * dark_factor;
+                                                        g = g * (1.0 - dark_factor) + custom_g * dark_factor;
+                                                        b = b * (1.0 - dark_factor) + custom_b * dark_factor;
+                                                    } else {
+                                                        r *= 1.0 - dark_factor;
+                                                        g *= 1.0 - dark_factor;
+                                                        b *= 1.0 - dark_factor;
+                                                    }
+                                                }
+                                            }
+                                        } else if v >= 0.24 && v <= 0.33 {
+                                            // Tinte Labial translúcido
+                                            let eff_alpha = (mk_a * lipstick * 0.65).clamp(0.0, 0.85);
+                                            if eff_alpha > 0.001 {
+                                                r = r * (1.0 - eff_alpha) + mk_r * eff_alpha;
+                                                g = g * (1.0 - eff_alpha) + mk_g * eff_alpha;
+                                                b = b * (1.0 - eff_alpha) + mk_b * eff_alpha;
+                                            }
+                                        } else {
+                                            // Rubor en pómulos / sombreado difuminado
+                                            let eff_alpha = (mk_a * foundation_intensity.max(contour).clamp(0.0, 1.0) * 0.50).clamp(0.0, 0.80);
+                                            if eff_alpha > 0.001 {
+                                                r = r * (1.0 - eff_alpha) + mk_r * eff_alpha;
+                                                g = g * (1.0 - eff_alpha) + mk_g * eff_alpha;
+                                                b = b * (1.0 - eff_alpha) + mk_b * eff_alpha;
                                             }
                                         }
                                     }
@@ -3079,6 +2579,33 @@ impl VideoProcessor {
                     out_row[idx + 3] = 255;
                 }
             });
+
+        // Renderizado de Accesorios 3D / Props (Cuernos de Diablo Low-Poly Mesh 3D)
+        if let Some(pose) = head_pose_3d {
+            let drawn_cnt = self.mesh3d_renderer.render_mesh(
+                &self.devil_horns_mesh,
+                &pose,
+                config.effect_intensity,
+                &mut self.output_buffer,
+            );
+            static mut LAST_PIXEL_LOG: u32 = 0;
+            unsafe {
+                LAST_PIXEL_LOG += 1;
+                if LAST_PIXEL_LOG % 60 == 1 {
+                    crate::log_info!("Effects", "Cuernos 3D renderizados: {} píxeles dibujados en búfer {}x{} (yaw={:.2})", drawn_cnt, width, height, pose.yaw_ratio);
+                }
+            }
+        }
+
+        // Renderizado de Rasgos Agrandados (Boca y Ojos Cómicos / Face Inset)
+        if let Some(ref inset_params) = face_inset_params {
+            render_face_inset(
+                inset_params,
+                &mut self.output_buffer,
+                width,
+                height,
+            );
+        }
 
         (
             &self.output_buffer,

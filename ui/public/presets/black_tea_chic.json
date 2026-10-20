@@ -1,0 +1,36 @@
+{
+  "id": "black_tea_chic",
+  "name": "Black Tea Chic",
+  "category": "hermoso",
+  "default_filter_intensity": 70,
+  "default_makeup_intensity": 65,
+  "face_light": {
+    "brightness": 0.04,
+    "contrast": 1.08,
+    "saturation": 0.98,
+    "white_balance": -0.04,
+    "exposure": 0.03,
+    "foundation_tone": "tone-6",
+    "skin_smoothing": 0.65
+  },
+  "makeup": {
+    "lipstick": 0.45,
+    "lipstick_color": "rose_natural",
+    "eyeshadow": 0.55,
+    "eyeshadow_color": "black_tea",
+    "eyeshadow_style": "foxy_glam",
+    "contour": 0.35,
+    "teeth_whitening": 0.50,
+    "eye_brighten": 0.65,
+    "eye_catchlight": 0.45,
+    "eyelashes": 0.70,
+    "lip_plump": 0.12,
+    "eye_enlarge": 0.22,
+    "eye_round": 0.28,
+    "iris_lighting": 0.65,
+    "iris_color": "gray",
+    "eyebrows": 0.50,
+    "eyebrow_color": "dark_brown",
+    "eyebrow_style": "defined_arch"
+  }
+}

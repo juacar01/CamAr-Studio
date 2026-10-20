@@ -1,6 +1,6 @@
 [package]
 name = "camar-engine"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 
 [dependencies]
@@ -21,8 +21,11 @@ windows-sys = { version = "0.59", features = [
 ] }
 nokhwa = { version = "0.10.11", features = ["input-msmf"] }
 cpal = "0.18.2"
-image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "ico"] }
 chrono = "0.4"
+
+[build-dependencies]
+winres = "0.1"
 
 [lib]
 name = "camar_engine"

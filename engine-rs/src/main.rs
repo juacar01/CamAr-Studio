@@ -41,6 +41,11 @@ extern "system" {
     fn timeEndPeriod(uPeriod: u32) -> u32;
 }
 
+#[link(name = "kernel32")]
+extern "system" {
+    fn SetDllDirectoryA(lpPathName: *const u8) -> i32;
+}
+
 fn get_mime_type(path: &str) -> &'static str {
     if path.ends_with(".html") {
         "text/html; charset=utf-8"
@@ -59,14 +64,32 @@ fn get_mime_type(path: &str) -> &'static str {
     }
 }
 
+fn load_app_icon() -> Option<tao::window::Icon> {
+    const ICO_BYTES: &[u8] = include_bytes!("../app.ico");
+    if let Ok(img) = image::load_from_memory(ICO_BYTES) {
+        let rgba = img.into_rgba8();
+        let (w, h) = rgba.dimensions();
+        tao::window::Icon::from_rgba(rgba.into_raw(), w, h).ok()
+    } else {
+        None
+    }
+}
+
 fn run_multimedia_engine(
     config: Arc<RwLock<StudioConfig>>,
     devices_json: String,
 ) {
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .expect("Error al inicializar runtime de Tokio");
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let desc = format!("Fallo al crear el entorno de ejecución multihilo (Tokio): {}", e);
+            crate::logger::show_error_dialog("Motor Multimedia (Tokio Runtime)", &desc);
+            panic!("{}", desc);
+        }
+    };
 
     rt.block_on(async move {
         let (ipc_server, telemetry_tx, video_tx) = IpcServer::new(Arc::clone(&config), devices_json);
@@ -81,7 +104,11 @@ fn run_multimedia_engine(
         let mut width = 1920;
         let mut height = 1080;
         let mut capture = VideoCapture::new(width, height);
-        let mut ai_engine = AiEngine::new(width, height);
+        let initial_ai_backend = {
+            let cfg = config.read().await;
+            cfg.ai_backend.clone()
+        };
+        let mut ai_engine = AiEngine::new(width, height, &initial_ai_backend);
         let mut processor = VideoProcessor::new(width, height);
         let mut virtual_cam = VirtualCamManager::new(width, height);
 
@@ -94,7 +121,9 @@ fn run_multimedia_engine(
         let mut current_h = 0;
         let mut current_fps = 0;
         let mut current_fmt = String::new();
+        let mut current_rotation: i32 = -1;
         let mut current_audio_id = "default".to_string();
+        let mut rotated_frame_buf = Vec::new();
 
         let hardware_info = SystemHardwareInfo::detect();
         let mut last_video_backend = String::new();
@@ -112,7 +141,7 @@ fn run_multimedia_engine(
 
                 while let Ok((rgb_data, pw, ph)) = preview_rx.recv() {
                     jpeg_bytes.clear();
-                    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_bytes, 68);
+                    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_bytes, 62);
                     if let Ok(()) = encoder.encode(
                         &rgb_data,
                         pw,
@@ -140,7 +169,7 @@ fn run_multimedia_engine(
 
         let mut frame_interval = Duration::from_micros(33_333); // 30 FPS por defecto
         let mut last_preview_time = Instant::now();
-        let preview_interval = Duration::from_millis(33); // 30 FPS para Preview UI
+        let preview_interval = Duration::from_millis(16); // Hasta 60 FPS ultra-fluido para Preview UI
         let mut last_perf_log = Instant::now();
 
         loop {
@@ -152,24 +181,39 @@ fn run_multimedia_engine(
                 read_lock.clone()
             };
 
-            // 1. Detección de cambio dinámico de Cámara / Resolución / Formato
+            // 1. Detección de cambio dinámico de Cámara / Resolución / Formato / Rotación
+            let rot = current_cfg.camera_rotation;
+            let is_portrait = rot == 90 || rot == 270;
+            let effective_w = if is_portrait { current_cfg.selected_height as usize } else { current_cfg.selected_width as usize };
+            let effective_h = if is_portrait { current_cfg.selected_width as usize } else { current_cfg.selected_height as usize };
+
             if current_cfg.selected_camera_id != current_cam_id
                 || current_cfg.selected_width != current_w
                 || current_cfg.selected_height != current_h
                 || current_cfg.selected_fps != current_fps
                 || current_cfg.selected_format != current_fmt
+                || rot != current_rotation
             {
+                let cam_hardware_changed = current_cfg.selected_camera_id != current_cam_id
+                    || current_cfg.selected_width != current_w
+                    || current_cfg.selected_height != current_h
+                    || current_cfg.selected_fps != current_fps
+                    || current_cfg.selected_format != current_fmt;
+
                 current_cam_id = current_cfg.selected_camera_id.clone();
                 current_w = current_cfg.selected_width;
                 current_h = current_cfg.selected_height;
                 current_fps = current_cfg.selected_fps;
                 current_fmt = current_cfg.selected_format.clone();
+                current_rotation = rot;
 
-                width = current_w as usize;
-                height = current_h as usize;
+                width = effective_w;
+                height = effective_h;
                 frame_interval = Duration::from_micros(1_000_000 / current_fps.max(1) as u64);
 
-                capture.start_camera(&current_cam_id, current_w, current_h, current_fps, &current_fmt);
+                if cam_hardware_changed {
+                    capture.start_camera(&current_cam_id, current_w, current_h, current_fps, &current_fmt);
+                }
                 ai_engine.resize(width, height);
                 processor.resize(width, height);
                 virtual_cam.resize(width, height, current_fps);
@@ -188,18 +232,24 @@ fn run_multimedia_engine(
             if current_cfg.video_backend != last_video_backend {
                 last_video_backend = current_cfg.video_backend.clone();
                 if last_video_backend == "gpu_d3d12" {
-                    crate::log_info!("Hardware", "Aceleración de Video activada: GPU NVIDIA GeForce RTX 5060 (Direct3D 12 Compute Pipeline)");
+                    crate::log_info!("Hardware", "Aceleración de Video activada: GPU {} (Direct3D 12 Compute Pipeline)", hardware_info.gpu_name);
                 } else {
-                    crate::log_info!("Hardware", "Aceleración de Video activada: CPU Intel Core Ultra 7 265KF (SIMD AVX2 Multihilo)");
+                    crate::log_info!("Hardware", "Aceleración de Video activada: CPU {} (SIMD AVX2 Multihilo)", hardware_info.cpu_name);
                 }
             }
 
             if current_cfg.ai_backend != last_ai_backend {
+                let is_reconfig = !last_ai_backend.is_empty();
                 last_ai_backend = current_cfg.ai_backend.clone();
                 match last_ai_backend.as_str() {
-                    "npu" => crate::log_info!("Hardware", "Inferencia de IA activada en NPU: Intel(R) AI Boost (VPU Neural Engine)"),
-                    "gpu" => crate::log_info!("Hardware", "Inferencia de IA activada en GPU: NVIDIA GeForce RTX 5060 (Tensor Cores / DirectML)"),
-                    _ => crate::log_info!("Hardware", "Inferencia de IA activada en CPU: Intel Core Ultra 7 265KF (SIMD AVX2)"),
+                    "npu" => crate::log_info!("Hardware", "Inferencia de IA activada en NPU: {} (Acelerador Neural)", hardware_info.npu_name),
+                    "gpu" => crate::log_info!("Hardware", "Inferencia de IA activada en GPU: {} (Tensor Cores / DirectML)", hardware_info.gpu_name),
+                    _ => crate::log_info!("Hardware", "Inferencia de IA activada en CPU: {} (SIMD AVX2)", hardware_info.cpu_name),
+                }
+                if is_reconfig {
+                    crate::log_info!("AiEngine", "Reinicializando motor de IA con nuevo backend: {}", last_ai_backend);
+                    drop(ai_engine);
+                    ai_engine = AiEngine::new(width, height, &last_ai_backend);
                 }
             }
 
@@ -210,8 +260,20 @@ fn run_multimedia_engine(
                 virtual_cam.stop();
             }
 
-            // 4. Captura de Frame
-            let raw_frame = capture.get_frame(elapsed_sec);
+            // 4. Captura y Rotación Dinámica de Frame (Orientación de Sensor)
+            let raw_camera_frame = capture.get_frame(elapsed_sec);
+            let raw_frame: &[u8] = if current_rotation != 0 {
+                crate::capture::rotate_rgba(
+                    raw_camera_frame,
+                    current_w as usize,
+                    current_h as usize,
+                    current_rotation,
+                    &mut rotated_frame_buf,
+                );
+                &rotated_frame_buf
+            } else {
+                raw_camera_frame
+            };
 
             // 5. Inferencia Facial 1:1 Síncrona de Cero Latencia (0.0ms lag) + Segmentación GPU Asíncrona
             let ai_state = ai_engine.process_frame_sync(raw_frame, &current_cfg);
@@ -242,7 +304,7 @@ fn run_multimedia_engine(
 
             if !current_cfg.preview_paused && video_tx.receiver_count() > 0 && should_send_preview {
                 last_preview_time = now_instant;
-                let scale_2x = width > 1920 || height > 1080;
+                let scale_2x = width >= 1280 || height >= 720;
                 let preview_w = if scale_2x { width / 2 } else { width };
                 let preview_h = if scale_2x { height / 2 } else { height };
                 let target_len = preview_w * preview_h * 3;
@@ -328,9 +390,9 @@ fn run_multimedia_engine(
                     gpu_ms: avg_gpu_ms,
                     vcam_active: virtual_cam.is_active(),
                     gpu_name: if current_cfg.video_backend == "gpu_d3d12" {
-                        "NVIDIA GeForce RTX 5060 [Direct3D 12 GPU Compute]".to_string()
+                        format!("{} [Direct3D 12 GPU Compute]", hardware_info.gpu_name)
                     } else {
-                        "Intel Core Ultra 7 265KF [CPU SIMD AVX2]".to_string()
+                        format!("{} [CPU SIMD AVX2]", hardware_info.cpu_name)
                     },
                     faces: ai_state.faces.len(),
                     detected_luma: photo_stats.detected_luma,
@@ -365,6 +427,17 @@ fn run_multimedia_engine(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 0. Prioridad a DLLs locales del ejecutable (evita colisiones con onnxruntime.dll de System32)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            if let Ok(c_parent) = std::ffi::CString::new(parent.to_string_lossy().as_bytes()) {
+                unsafe {
+                    SetDllDirectoryA(c_parent.as_ptr() as *const u8);
+                }
+            }
+        }
+    }
+
     // Activar resolución de temporizador de 1ms en Windows para 60.0 FPS estables y fluidos
     unsafe {
         timeBeginPeriod(1);
@@ -462,14 +535,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. Crear ventana nativa con TAO
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
+    let mut window_builder = WindowBuilder::new()
         .with_title("CamAr Studio - Live Video & Virtual Camera")
         .with_inner_size(LogicalSize::new(1480.0, 900.0))
-        .with_min_inner_size(LogicalSize::new(1100.0, 700.0))
-        .build(&event_loop)?;
+        .with_min_inner_size(LogicalSize::new(1100.0, 700.0));
+
+    if let Some(icon) = load_app_icon() {
+        window_builder = window_builder.with_window_icon(Some(icon));
+    }
+
+    let window = match window_builder.build(&event_loop) {
+        Ok(w) => w,
+        Err(e) => {
+            let desc = format!("No se pudo inicializar la ventana nativa del sistema: {}", e);
+            crate::logger::show_error_dialog("Creación de Ventana (TAO)", &desc);
+            return Err(Box::new(e));
+        }
+    };
 
     // 5. Configurar WebView con WRY embebido
-    let _webview = WebViewBuilder::new()
+    let webview_builder = WebViewBuilder::new()
         .with_custom_protocol("camar".into(), move |_webview, request| {
             let path = request.uri().path();
             let trimmed_path = if path == "/" || path.is_empty() {
@@ -517,8 +602,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap()
             }
         })
-        .with_url("camar://localhost/index.html")
-        .build(&window)?;
+        .with_url("camar://localhost/index.html");
+
+    let _webview = match webview_builder.build(&window) {
+        Ok(wv) => wv,
+        Err(e) => {
+            let desc = format!(
+                "No se pudo inicializar el entorno de interfaz web (WebView2): {}\n\nAsegúrese de que Microsoft Edge WebView2 Runtime esté instalado en Windows.",
+                e
+            );
+            crate::logger::show_error_dialog("Interfaz de Usuario (WebView2)", &desc);
+            return Err(Box::new(e));
+        }
+    };
 
     log_info!("UI-Desktop", "Ventana nativa de interfaz iniciada exitosamente.");
 

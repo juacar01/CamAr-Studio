@@ -155,6 +155,7 @@ impl IpcServer {
                             if let Some(sw) = v["skinWhitening"].as_f64() { cfg.skin_whitening = sw as f32; }
                             if let Some(fs) = v["faceSlim"].as_f64() { cfg.face_slim = fs as f32; }
                             if let Some(ee) = v["eyeEnlarge"].as_f64() { cfg.eye_enlarge = ee as f32; }
+                            if let Some(es) = v["eyeShape"].as_str() { cfg.eye_shape = es.to_string(); }
                             if let Some(er) = v["eyeRound"].as_f64() { cfg.eye_round = er as f32; }
                             if let Some(eb) = v["eyeBrighten"].as_f64() { cfg.eye_brighten = eb as f32; }
                             if let Some(ec) = v["eyeCatchlight"].as_f64() { cfg.eye_catchlight = ec as f32; }
@@ -170,7 +171,33 @@ impl IpcServer {
                             if let Some(ls) = v["lipstick"].as_f64() { cfg.lipstick = ls as f32; }
                             if let Some(lc) = v["lipstickColor"].as_str() { cfg.lipstick_color = lc.to_string(); }
                             if let Some(es) = v["eyeshadow"].as_f64() { cfg.eyeshadow = es as f32; }
+                            if let Some(ec) = v["eyeshadowColor"].as_str() { cfg.eyeshadow_color = ec.to_string(); }
+                            if let Some(est) = v["eyeshadowStyle"].as_str() { cfg.eyeshadow_style = est.to_string(); }
+                            if let Some(eb) = v["eyebrows"].as_f64() { cfg.eyebrows = eb as f32; }
+                            if let Some(ebc) = v["eyebrowColor"].as_str() { cfg.eyebrow_color = ebc.to_string(); }
+                            if let Some(ebs) = v["eyebrowStyle"].as_str() { cfg.eyebrow_style = ebs.to_string(); }
                             if let Some(ct) = v["contour"].as_f64() { cfg.contour = ct as f32; }
+                            if let Some(be) = v["beardEnhancement"].as_f64().or_else(|| v["beard_enhancement"].as_f64()) { cfg.beard_enhancement = be as f32; }
+                            if let Some(bc) = v["beardColor"].as_str().or_else(|| v["beard_color"].as_str()) { cfg.beard_color = bc.to_string(); }
+
+                            if let Some(ae) = v["activeEffect"].as_str().or_else(|| v["active_effect"].as_str()) {
+                                if ae != cfg.active_effect {
+                                    crate::log_info!("Effects", "IPC UPDATE_CONFIG: active_effect '{}' -> '{}'", cfg.active_effect, ae);
+                                }
+                                cfg.active_effect = ae.to_string();
+                            }
+                            if let Some(ei) = v["effectIntensity"].as_f64().or_else(|| v["effect_intensity"].as_f64()) {
+                                cfg.effect_intensity = ei as f32;
+                            }
+                            if let Some(ms) = v["mouthScale"].as_f64().or_else(|| v["mouth_scale"].as_f64()) {
+                                cfg.mouth_scale = ms as f32;
+                            }
+                            if let Some(es) = v["eyesScale"].as_f64().or_else(|| v["eyes_scale"].as_f64()) {
+                                cfg.eyes_scale = es as f32;
+                            }
+                            if let Some(ed) = v["eyesDistance"].as_f64().or_else(|| v["eyes_distance"].as_f64()) {
+                                cfg.eyes_distance = ed as f32;
+                            }
 
                             if let Some(bg) = v["bgMode"].as_i64() { cfg.bg_mode = BackgroundMode::from(bg as i32); }
                             if let Some(br) = v["blurRadius"].as_f64() { cfg.blur_radius = br as f32; }
@@ -187,6 +214,10 @@ impl IpcServer {
 
                             if let Some(fl) = v["filterLut"].as_str() { cfg.filter_lut = fl.to_string(); }
                             if let Some(fi) = v["filterIntensity"].as_f64() { cfg.filter_intensity = fi as f32; }
+
+                            if let Some(rot) = v["cameraRotation"].as_i64().or_else(|| v["camera_rotation"].as_i64()) {
+                                cfg.camera_rotation = rot as i32;
+                            }
 
                             // Solo actualizar dimensiones/FPS en UPDATE_CONFIG si corresponden a la cámara actualmente activa
                             let incoming_cam = v["selectedCameraId"].as_str().unwrap_or("");
@@ -208,6 +239,25 @@ impl IpcServer {
                             }
                             if let Some(ba) = v.get("baseAppearance") {
                                 if let Ok(parsed_ba) = serde_json::from_value::<crate::types::BaseAppearanceConfig>(ba.clone()) {
+                                    if !parsed_ba.eyeshadow_color.is_empty() {
+                                        cfg.eyeshadow_color = parsed_ba.eyeshadow_color.clone();
+                                    }
+                                    if !parsed_ba.eyeshadow_style.is_empty() {
+                                        cfg.eyeshadow_style = parsed_ba.eyeshadow_style.clone();
+                                    }
+                                    if !parsed_ba.eyebrow_color.is_empty() {
+                                        cfg.eyebrow_color = parsed_ba.eyebrow_color.clone();
+                                    }
+                                    if !parsed_ba.eyebrow_style.is_empty() {
+                                        cfg.eyebrow_style = parsed_ba.eyebrow_style.clone();
+                                    }
+                                    if !parsed_ba.eye_shape.is_empty() {
+                                        cfg.eye_shape = parsed_ba.eye_shape.clone();
+                                    }
+                                    if !parsed_ba.beard_color.is_empty() {
+                                        cfg.beard_color = parsed_ba.beard_color.clone();
+                                    }
+                                    cfg.beard_enhancement = (parsed_ba.beard_enhancement / 100.0).clamp(0.0, 1.0);
                                     cfg.base_appearance = parsed_ba;
                                 } else {
                                     cfg.sync_base_appearance_from_top_level();
@@ -233,6 +283,7 @@ impl IpcServer {
                                     brightness: cfg.brightness,
                                     color_range: cfg.color_range,
                                     color_space: cfg.color_space,
+                                    rotation: cfg.camera_rotation,
                                 };
                                 cfg.camera_profiles.insert(cam_key, active_profile);
                             }
@@ -262,6 +313,7 @@ impl IpcServer {
                                         brightness: cfg.brightness,
                                         color_range: cfg.color_range,
                                         color_space: cfg.color_space,
+                                        rotation: cfg.camera_rotation,
                                     };
                                     cfg.camera_profiles.insert(prev_cam_key, prev_profile);
                                 }
@@ -284,6 +336,7 @@ impl IpcServer {
                                     cfg.brightness = prof.brightness;
                                     cfg.color_range = prof.color_range;
                                     cfg.color_space = prof.color_space;
+                                    cfg.camera_rotation = prof.rotation;
                                 } else {
                                     if let Some(w) = v["width"].as_u64() { cfg.selected_width = w as u32; }
                                     if let Some(h) = v["height"].as_u64() { cfg.selected_height = h as u32; }
@@ -298,6 +351,7 @@ impl IpcServer {
                                     cfg.brightness = 0.0;
                                     cfg.color_range = ColorRange::Full;
                                     cfg.color_space = ColorSpace::Rec709;
+                                    cfg.camera_rotation = 0;
                                 }
                             } else {
                                 // Misma cámara: el usuario seleccionó expresamente nueva resolución, FPS o formato!
@@ -322,6 +376,7 @@ impl IpcServer {
                                 brightness: cfg.brightness,
                                 color_range: cfg.color_range,
                                 color_space: cfg.color_space,
+                                rotation: cfg.camera_rotation,
                             };
                             cfg.camera_profiles.insert(new_cam_id, active_profile);
 

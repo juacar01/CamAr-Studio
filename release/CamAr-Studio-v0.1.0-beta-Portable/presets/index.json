@@ -1,5 +1,13 @@
 [
   {
+    "id": "black_tea_chic",
+    "name": "Black Tea Chic",
+    "category": "hermoso",
+    "avatar": "/presets/black_tea_chic.png",
+    "is_favorite": true,
+    "file": "/presets/black_tea_chic.json"
+  },
+  {
     "id": "charm",
     "name": "Charm",
     "category": "estilo_ins",

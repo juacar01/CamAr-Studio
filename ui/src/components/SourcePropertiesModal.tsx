@@ -380,9 +380,48 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
                 </div>
               </div>
 
+              {/* Orientación y Rotación de Sensor (Webcam Vertical / Apaisado) */}
+              <div className="space-y-2 pt-3 border-t border-neutral-800">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-neutral-300 flex items-center space-x-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-pink-400" />
+                    <span>Orientación del Sensor (Rotación 90° / 180° / 270°):</span>
+                  </label>
+                  <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-pink-500/10 text-pink-400 border border-pink-500/20">
+                    {(effects.cameraRotation === 90 || effects.cameraRotation === 270) ? '9:16 Vertical (Retrato)' : '16:9 Horizontal (Apaisado)'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { rot: 0, label: '0° Normal', desc: '16:9 Horizontal' },
+                    { rot: 90, label: '90° Vertical', desc: 'Giro Horario (9:16)' },
+                    { rot: 180, label: '180° Invertido', desc: 'De Cabeza' },
+                    { rot: 270, label: '270° Vertical', desc: 'Giro Antihorario (9:16)' },
+                  ].map((item) => {
+                    const isActive = (effects.cameraRotation ?? 0) === item.rot;
+                    return (
+                      <button
+                        key={item.rot}
+                        type="button"
+                        onClick={() => update({ cameraRotation: item.rot })}
+                        className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-pink-500/20 border-pink-500 text-pink-200 shadow-md shadow-pink-500/20 font-bold'
+                            : 'bg-neutral-800/80 hover:bg-neutral-750 border-neutral-700/80 text-neutral-400 hover:text-neutral-200'
+                        }`}
+                      >
+                        <span className="text-xs">{item.label}</span>
+                        <span className="text-[9px] opacity-75">{item.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="p-3 bg-neutral-950/60 rounded-xl border border-neutral-800 text-neutral-400 text-[11px] leading-relaxed">
                 ℹ️ Los valores de resolución, FPS y formato se consultan directamente del hardware en tiempo real.
-                Seleccionar 1080p a 60 FPS con formato NV12 ofrece el rendimiento óptimo con mínima carga de CPU.
+                Si colocas tu webcam de forma vertical sobre un trípode, selecciona 90° o 270° para que el maquillaje, visagismo y efectos se adapten automáticamente al formato 9:16.
               </div>
             </div>
           )}

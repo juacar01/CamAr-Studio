@@ -12,6 +12,7 @@ export class EngineSocketClient {
   private latestPendingEffects: EffectState | null = null;
 
   private onFrameCallback: ((bitmap: ImageBitmap) => void) | null = null;
+  private isDecodingFrame: boolean = false;
 
   private onPresetLoadedCallback: ((preset: any) => void) | null = null;
 
@@ -53,11 +54,17 @@ export class EngineSocketClient {
       this.socket.onmessage = (event) => {
         if (event.data instanceof Blob) {
           if (this.onFrameCallback) {
+            if (this.isDecodingFrame) {
+              return;
+            }
+            this.isDecodingFrame = true;
             createImageBitmap(event.data)
               .then((bitmap) => {
+                this.isDecodingFrame = false;
                 this.onFrameCallback?.(bitmap);
               })
               .catch((err) => {
+                this.isDecodingFrame = false;
                 uiLogger.warn('Preview', `Aviso al decodificar frame bitmap: ${err}`);
               });
           }
@@ -108,7 +115,7 @@ export class EngineSocketClient {
   public sendConfigUpdate(effects: EffectState) {
     this.latestPendingEffects = effects;
     if (!this.pendingUpdateTimer) {
-      this.pendingUpdateTimer = window.requestAnimationFrame(() => {
+      this.pendingUpdateTimer = window.setTimeout(() => {
         if (this.socket && this.socket.readyState === WebSocket.OPEN && this.latestPendingEffects) {
           const payload = {
             command: 'UPDATE_CONFIG',
@@ -117,7 +124,7 @@ export class EngineSocketClient {
           this.socket.send(JSON.stringify(payload));
         }
         this.pendingUpdateTimer = null;
-      });
+      }, 16);
     }
   }
 
