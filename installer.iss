@@ -1,10 +1,10 @@
-; Inno Setup Script para CamAr Studio (Beta)
+﻿; Inno Setup Script para CamAr Studio (Beta)
 #define MyAppName "CamAr Studio"
-#define MyAppVersion "0.1.2-beta"
+#define MyAppVersion "0.1.3-beta"
 #define MyAppPublisher "CamAr Studio"
 #define MyAppURL "https://github.com/CamArStudio"
 #define MyAppExeName "CamAr-Studio.exe"
-#define SourceDir "d:\proyectos\CamAr Studio\release\CamAr-Studio-v0.1.2-beta-Portable"
+#define SourceDir "d:\proyectos\CamAr Studio\release\CamAr-Studio-v0.1.3-beta-Portable"
 
 [Setup]
 AppId={{58B8682F-E22A-4D3B-A87A-CC6B8B1328E0}
@@ -18,7 +18,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=d:\proyectos\CamAr Studio\release
-OutputBaseFilename=CamAr-Studio-v0.1.2-beta-Setup
+OutputBaseFilename=CamAr-Studio-v0.1.3-beta-Setup
 SetupIconFile=d:\proyectos\CamAr Studio\ui-winui\Assets\AppIcon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max
@@ -54,5 +54,6 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 ; Desregistrar driver al desinstalar
 Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s ""{app}\driver\CamAr_VCam64.dll"""; Flags: runhidden
 Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s ""{app}\driver\CamAr_VCam32.dll"""; Flags: runhidden
+
 
 
