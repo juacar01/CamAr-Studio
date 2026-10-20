@@ -14,6 +14,7 @@ pub mod effects;
 pub mod mesh3d;
 pub mod beard;
 pub mod face_inset;
+pub mod submeshes;
 
 pub use face_mesh::*;
 #[allow(unused_imports)]
@@ -21,6 +22,7 @@ pub use effects::*;
 pub use mesh3d::*;
 pub use beard::*;
 pub use face_inset::*;
+pub use submeshes::*;
 
 pub use color::*;
 pub use geometry::*;
@@ -83,6 +85,7 @@ pub struct VideoProcessor {
     locked_contrast: f32,
     lighting_hold_frames: u32,
     lighting_initialized: bool,
+    adaptive_forehead: AdaptiveForeheadMesh,
 }
 
 impl VideoProcessor {
@@ -183,6 +186,7 @@ impl VideoProcessor {
             locked_contrast: 1.0,
             lighting_hold_frames: 0,
             lighting_initialized: false,
+            adaptive_forehead: AdaptiveForeheadMesh::new(),
         }
     }
 
@@ -1157,6 +1161,14 @@ impl VideoProcessor {
             None
         };
         let face_uv_map = &self.face_mesh_renderer.face_uv_map;
+
+        // Sub-Malla 3D Adaptada por Gradiente Tonal (Extensión Natural de Frente hasta el Cabello)
+        if beauty_enabled {
+            if let Some(face) = active_face {
+                self.adaptive_forehead.compute(&face.landmarks, input_rgba, width, height);
+            }
+        }
+        let adaptive_forehead = &self.adaptive_forehead;
         let master_makeup = &self.master_makeup_rgba;
 
         let lut = &self.gaussian_lut;
@@ -1359,16 +1371,30 @@ impl VideoProcessor {
                         }
                     }
 
-                    // Exclusión estricta de orejas: Si el píxel está lateralmente fuera de los pómulos/mandíbula,
-                    // pertenece a la oreja, cabello o fondo. Forzar skin_val = 0.0 para no desenfocar jamás las orejas.
-                    if let Some((_, _, eye_dist, face_left, face_right)) = face_geom {
-                        let margin = eye_dist * 0.08;
-                        if px < face_left {
-                            let t = ((px - (face_left - margin)) / margin).clamp(0.0, 1.0);
-                            skin_val *= t * t * (3.0 - 2.0 * t);
-                        } else if px > face_right {
-                            let t = (((face_right + margin) - px) / margin).clamp(0.0, 1.0);
-                            skin_val *= t * t * (3.0 - 2.0 * t);
+                    // Delimitación Anatómica con Sub-Mallas 3D y Adaptación Tonal:
+                    // 1. Malla 3D facial canónica interna (pómulos, nariz, mandíbula).
+                    // 2. Sub-Malla 3D Adaptada de Frente (extensión calculada por gradientes tonales contra el cabello).
+                    // 3. Región de cuello (bajo barbilla) sin desborde a orejas o fondo.
+                    let packed_mesh = face_uv_map.get(y * width + x).copied().unwrap_or(0);
+                    let is_in_face_mesh = packed_mesh > 0;
+                    if !is_in_face_mesh {
+                        let mut keep_skin = false;
+                        if let Some(face) = active_face {
+                            let chin_y = face.landmarks.get(152).map(|c| c.y).unwrap_or(height as f32);
+                            let top_forehead_y = face.landmarks.get(10).map(|t| t.y).unwrap_or(0.0);
+
+                            // Cuello bajo barbilla
+                            let is_neck = py > chin_y;
+
+                            // Frente adaptada por gradiente de color/contraste tonal (llega exactamente hasta el pelo)
+                            let is_forehead = adaptive_forehead.is_in_forehead(px, py, top_forehead_y);
+
+                            if is_neck || is_forehead {
+                                keep_skin = true;
+                            }
+                        }
+                        if !keep_skin {
+                            skin_val *= 0.10;
                         }
                     }
 
@@ -1613,7 +1639,7 @@ impl VideoProcessor {
                         // Curva de respuesta perceptual para el slider:
                         // A 35%-50% ya entrega una textura sedosa y uniforme evidente, dejando el 80-100% para acabado porcelana intenso
                         let eff_intensity = 1.0 - (1.0 - skin_intensity).powi(2);
-                        let mut smooth_blend = (eff_intensity * (0.40 + 0.60 * skin_val) * feat_factor).clamp(0.0, 1.0);
+                        let mut smooth_blend = (eff_intensity * skin_val * feat_factor).clamp(0.0, 1.0);
 
                         // Si el usuario activa el realce de barba, preservar la textura y nitidez de los vellos
                         if beard_enhancement > 0.001 {

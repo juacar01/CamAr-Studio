@@ -952,7 +952,7 @@ impl Default for StudioConfig {
             selected_camera_id: "synthetic".to_string(),
             selected_width: 1920,
             selected_height: 1080,
-            selected_fps: 60,
+            selected_fps: 30,
             selected_format: "NV12".to_string(),
 
             color_range: ColorRange::Full,

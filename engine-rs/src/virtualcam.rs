@@ -65,7 +65,7 @@ impl VirtualCamManager {
     pub fn resize(&mut self, width: usize, height: usize, fps: u32) {
         self.width = width;
         self.height = height;
-        self.fps = fps;
+        self.fps = fps.clamp(1, 30);
     }
 
     pub fn start(&mut self) -> bool {

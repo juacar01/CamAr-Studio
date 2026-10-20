@@ -288,18 +288,21 @@ pub fn locate_iris_disc(
     }
 
     let mid_y_cx = (y_t_cx + y_b_cx) * 0.5;
-    // Si encontramos una zona oscura clara (pupila), anclamos en ella; de lo contrario promediamos con el centro de apertura
-    let cy = if min_vert_lum < p_iris + 0.16 {
-        (0.80 * best_cy + 0.20 * mid_y_cx).clamp(
-            y_t_cx + 0.20 * iris_rad,
-            y_b_cx - 0.20 * iris_rad,
-        )
+    let raw_cy = if min_vert_lum < p_iris + 0.16 {
+        0.80 * best_cy + 0.20 * mid_y_cx
     } else {
-        mid_y_cx.clamp(
-            y_t_cx + 0.20 * iris_rad,
-            y_b_cx - 0.20 * iris_rad,
-        )
+        mid_y_cx
     };
+
+    // Rango seguro: garantizar incondicionalmente que safe_min <= safe_max para evitar panics de clamp
+    let min_limit = (y_t_cx - iris_rad * 0.35).min(y_b_cx);
+    let max_limit = (y_b_cx + iris_rad * 0.35).max(y_t_cx);
+    let (safe_min, safe_max) = if min_limit <= max_limit {
+        (min_limit, max_limit)
+    } else {
+        (max_limit, min_limit)
+    };
+    let cy = raw_cy.clamp(safe_min, safe_max);
 
     let sclera_lum = c_l.min(c_r).max(0.06) + p_iris;
     (cx, cy, iris_rad.clamp(4.0, 32.0), p_iris, sclera_lum)

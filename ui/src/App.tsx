@@ -12,7 +12,7 @@ const DEFAULT_EFFECTS: EffectState = {
   selectedCameraId: '',
   selectedWidth: 1920,
   selectedHeight: 1080,
-  selectedFps: 60,
+  selectedFps: 30,
   selectedFormat: 'NV12',
   cameraRotation: 0,
 
@@ -86,8 +86,8 @@ const getInitialEffects = (): EffectState => {
 
 const DEFAULT_TELEMETRY: EngineTelemetry = {
   type: 'TELEMETRY',
-  fps: 60.0,
-  frameTimeMs: 16.6,
+  fps: 30.0,
+  frameTimeMs: 33.3,
   aiMs: 1.4,
   gpuMs: 0.9,
   vcamActive: false,
@@ -182,7 +182,7 @@ export const App: React.FC = () => {
           const simFormat = syntheticCam?.formats[0] || {
             width: 1920,
             height: 1080,
-            fps: 60,
+            fps: 30,
             format: 'NV12',
           };
 

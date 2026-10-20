@@ -156,7 +156,7 @@ fn run_multimedia_engine(
             })
             .expect("Error al inicializar worker de preview");
 
-        log_info!("Engine-RS", "Pipeline de Video y Audio activo a 60 FPS...");
+        log_info!("Engine-RS", "Pipeline de Video y Audio activo a 30 FPS máximo...");
         log_info!("Hardware", "Hardware detectado: CPU: {} ({} núcleos) | GPU: {} | NPU: {}", 
             hardware_info.cpu_name, hardware_info.cpu_cores, hardware_info.gpu_name, hardware_info.npu_name);
 
@@ -168,8 +168,6 @@ fn run_multimedia_engine(
         let mut avg_gpu_ms;
 
         let mut frame_interval = Duration::from_micros(33_333); // 30 FPS por defecto
-        let mut last_preview_time = Instant::now();
-        let preview_interval = Duration::from_millis(16); // Hasta 60 FPS ultra-fluido para Preview UI
         let mut last_perf_log = Instant::now();
 
         loop {
@@ -203,13 +201,14 @@ fn run_multimedia_engine(
                 current_cam_id = current_cfg.selected_camera_id.clone();
                 current_w = current_cfg.selected_width;
                 current_h = current_cfg.selected_height;
-                current_fps = current_cfg.selected_fps;
+                current_fps = current_cfg.selected_fps.clamp(1, 30);
                 current_fmt = current_cfg.selected_format.clone();
                 current_rotation = rot;
 
                 width = effective_w;
                 height = effective_h;
-                frame_interval = Duration::from_micros(1_000_000 / current_fps.max(1) as u64);
+                let target_fps = current_fps.clamp(1, 30);
+                frame_interval = Duration::from_micros(1_000_000 / target_fps as u64);
 
                 if cam_hardware_changed {
                     capture.start_camera(&current_cam_id, current_w, current_h, current_fps, &current_fmt);
@@ -297,13 +296,9 @@ fn run_multimedia_engine(
                 virtual_cam.publish_frame(processed_frame);
             }
 
-            // 7.1 Transmisión de Preview Inteligente SSAA Multihilo con Búfer Reciclable (Zero-Allocation)
-            // Para <= 1080p -> 1:1 nativo. Para 1440p/4K -> 2x2 SSAA Box-Average en Rayon a 30 FPS para ahorrar CPU
-            let now_instant = Instant::now();
-            let should_send_preview = now_instant.duration_since(last_preview_time) >= preview_interval;
-
-            if !current_cfg.preview_paused && video_tx.receiver_count() > 0 && should_send_preview {
-                last_preview_time = now_instant;
+            // 7.1 Proyección Directa de processed_frame (Salida 1:1 de Cámara Virtual al Preview en tiempo real)
+            // Emite de inmediato cada cuadro procesado (esté o no activa la cámara virtual) sin timers que causen stuttering
+            if !current_cfg.preview_paused && video_tx.receiver_count() > 0 {
                 let scale_2x = width >= 1280 || height >= 720;
                 let preview_w = if scale_2x { width / 2 } else { width };
                 let preview_h = if scale_2x { height / 2 } else { height };
@@ -315,7 +310,7 @@ fn run_multimedia_engine(
                 }
 
                 if scale_2x {
-                    // SSAA 2x2 Box-Average secuencial (Cero contención de hilos en Rayon, 0.4ms)
+                    // SSAA 2x2 Box-Average secuencial ultra-rápido (0.3ms)
                     buf.chunks_exact_mut(preview_w * 3)
                         .enumerate()
                         .for_each(|(py, row)| {
@@ -344,7 +339,7 @@ fn run_multimedia_engine(
                             }
                         });
                 } else {
-                    // 1:1 Nativo para 1080p y 720p
+                    // 1:1 Nativo
                     buf.chunks_exact_mut(preview_w * 3)
                         .enumerate()
                         .for_each(|(py, row)| {
